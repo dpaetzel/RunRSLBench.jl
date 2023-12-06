@@ -271,11 +271,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1701439296,
-        "narHash": "sha256-ZFda7PHXoD+bsjt2B87uD9QiZY66PFcsvhnsFieJYXc=",
+        "lastModified": 1701877489,
+        "narHash": "sha256-YTgys7x+lU7l04fZ0Xs+lghxlzZYZCpjyvWTN4iUncQ=",
         "owner": "dpaetzel",
         "repo": "xcsf",
-        "rev": "b549dfcf6686f13ea926f0c36d7e80814aadefc2",
+        "rev": "7b17d7d9d599e8e7000598219fdde823b8d6f413",
         "type": "github"
       },
       "original": {
