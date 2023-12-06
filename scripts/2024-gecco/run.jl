@@ -240,27 +240,14 @@ function optparams(fname; testonly=false, name_run=missing)
         best_model = fitted_params(mach_tuned).best_model
         best_fitted_params = fitted_params(mach_tuned).best_fitted_params
 
-        # For XCSF, we extract and log Julia model params (and not the
-        # underlying Python library's params) for now.
-        # params_internal = fitted_params(mach_tuned).best_fitted_params.model.internal_params()
-        # params_sklearn = fitted_params(mach_tuned).best_fitted_params.model.get_params()
-        # for k in keys(params_internal)
-        #     check_param(
-        #         params_internal,
-        #         params_sklearn,
-        #         k;
-        #         name1 = "XCSF internal",
-        #         name2 = "XCSF sklearn",
-        #     )
-        # end
-
-        fieldnames_ = fieldnames(typeof(model))
         # Filter out blacklisted fieldnames.
-        fieldnames_ = filter(∉(blacklist), fieldnames_)
-        params_model = Dict(
-            Symbol.(string.(fieldnames_)) .=>
-                getproperty.(Ref(best_model.model), fieldnames_),
+        params_model = filter(
+            kv -> kv.first ∉ blacklist,
+            Dict(pairs(params(best_model.model))),
         )
+
+        # Note that for XCSF, we extract and log Julia model params (and not the
+        # underlying Python library's params) for now.
         # TODO Log RNG seed
         logartifact(mlf, mlfrun, "best_params.json", json(params_model))
 
