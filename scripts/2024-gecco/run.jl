@@ -7,9 +7,12 @@ using Missings
 using MLFlowClient
 using MLJ
 using NPZ
-using RunRSLBench.XCSF
-using RSLModels.Transformers
+using RSLModels.Intervals
 using RSLModels.MLFlowUtils
+using RSLModels.Transformers
+using RunRSLBench.RuleSupport
+using RunRSLBench.XCSF
+using Serialization
 using Tables
 # using TreeParzen
 DT = @load DecisionTreeRegressor pkg = DecisionTree verbosity = 0
@@ -179,7 +182,7 @@ function tune(model, mkspace, X, y)
     )
 
     mach_tuned = machine(pipe_tuned, X, y)
-    fit!(mach_tuned)
+    MLJ.fit!(mach_tuned)
 
     return mach_tuned, blacklist
 end
@@ -337,19 +340,41 @@ function runbest(fname; testonly=false, name_run=missing)
             ),
         )
 
+        @info "Transforming training input data …"
+        # Note that we cannot use a pipeline here because we need the scaler
+        # later.
+        scaler = MinMaxScaler()
+        mach_scaler = machine(scaler, X)
+        MLJ.fit!(mach_scaler)
+        X = MLJ.transform(mach_scaler, X)
+
         @info "Fitting best configuration of $label for task $(string(hash_task; base=16)) …"
-        pipe = mkpipe(model)
-        mach = machine(pipe, X, y)
-        fit!(mach)
+        mach = machine(model, X, y)
+        MLJ.fit!(mach)
 
         @info "Computing prediction metrics …"
-        y_pred = predict(mach, X)
-        y_test_pred = predict(mach, X_test)
+        y_pred = MLJ.predict(mach, X)
+        y_test_pred = MLJ.predict(mach, X_test)
 
         mae_train = mae(y, y_pred)
         mae_test = mae(y_test, y_test_pred)
         rmse_train = rmse(y, y_pred)
         rmse_test = rmse(y_test, y_test_pred)
+
+        rs = rules(family, fitted_params(mach))
+        # We'd have to convert stuff to the MLJ table format if we wanted to use
+        # `inverse_transform` directly. I.e. convert `Intervals.Interval`'s
+        # bounds etc. to be feature name–based.
+        xmin = fitted_params(mach_scaler).xmin
+        xmax = fitted_params(mach_scaler).xmax
+        intervals =
+            inverse_transform_interval.(rs.intervals, Ref(xmin), Ref(xmax))
+
+        mktempdir() do path
+            fpath = path * "/rules.jls"
+            serialize(fpath, intervals)
+            return logartifact(mlf, mlfrun, fpath)
+        end
 
         logmetric.(
             Ref(mlf),
@@ -364,5 +389,3 @@ function runbest(fname; testonly=false, name_run=missing)
     end
     return nothing
 end
-
-# Get population, NEXT extract rules
