@@ -157,8 +157,7 @@ function tune(model, mkspace, X, y)
     # stage so we can set hyperparameters properly.
     pipe = mkpipe(model)
 
-    Xmat = Tables.matrix(X)
-    N, DX = size(Xmat)
+    N, DX = nrow(X), ncol(X)
 
     sb = mkspace(pipe, DX)
     space = sb.space
@@ -216,8 +215,7 @@ function optparams(fname; testonly=false, name_run=missing)
     @info "Setting experiment name to $name_exp …"
     mlfexp = getorcreateexperiment(mlf, name_exp)
 
-    Xmat = Tables.matrix(X)
-    N, DX = size(Xmat)
+    N, DX = nrow(X), ncol(X)
 
     for (label, family, model, mkspace) in listvariants(N; testonly=testonly)
         @info "Starting run …"
@@ -309,8 +307,7 @@ end
 
 function runbest(fname; testonly=false, name_run=missing)
     X, y, hash_task, X_test, y_test = readdata(fname)
-    Xmat = Tables.matrix(X)
-    N, DX = size(Xmat)
+    N, DX = nrow(X), ncol(X)
 
     mlf = getmlf()
     @info "Logging to mlflow tracking URI $(mlf.baseuri)."
