@@ -1,3 +1,4 @@
+using Comonicon
 using Base64
 using Dates
 using DataFrames
@@ -138,15 +139,6 @@ function listvariants(N; testonly=false)
     ]
 end
 
-fname = "2-2-502-0-0.9-true.data.npz"
-
-# data = npzread(fname)
-# X, y = data["X"], data["y"]
-# X = MLJ.table(X)
-
-# X_test, y_test = data["X_test"], data["y_test"]
-# X_test = MLJ.table(X_test)
-
 function tune(model, mkspace, X, y; testonly=false)
     N, DX = nrow(X), ncol(X)
 
@@ -197,60 +189,89 @@ function readdata(fname)
     return (X, y, hash_task, X_test, y_test)
 end
 
-function optparams(fname; testonly=false, name_run=missing)
+"""
+Optimize hyperparameters of each configured ML algorithms for the given learning
+tasks, logging results to mlflow.
+
+# Args
+
+- `fnames`: Name of NPZ files that each containing training data for one
+  learning task.
+
+# Options
+
+- `--name-run`: Give the runs performed (one per ML algorithm configured) the
+  same specific name.
+
+# Flags
+
+- `--testonly`: Whether to perform very short runs that do not attempt to be
+  competitive (useful for testing the pipeline).
+"""
+@cast function optparams(
+    fnames...;
+    testonly::Bool=false,
+    name_run::Union{Missing,String}=missing,
+)
     # TODO Random seeding
     # TODO Random seeding for XCSF
 
-    X, y, hash_task, _, _ = readdata(fname)
+    for fname in fnames
+        @info "Starting hyperparameter optimization for learning task $fname."
+        X, y, hash_task, _, _ = readdata(fname)
+        N, DX = nrow(X), ncol(X)
 
-    mlf = getmlf()
-    @info "Logging to mlflow tracking URI $(mlf.baseuri)."
+        mlf = getmlf()
+        @info "Logging to mlflow tracking URI $(mlf.baseuri)."
 
-    name_exp = "optparams"
-    @info "Setting experiment name to $name_exp …"
-    mlfexp = getorcreateexperiment(mlf, name_exp)
+        name_exp = "optparams"
+        @info "Setting experiment name to $name_exp …"
+        mlfexp = getorcreateexperiment(mlf, name_exp)
 
-    N, DX = nrow(X), ncol(X)
+        for (label, family, model, mkspace) in
+            listvariants(N; testonly=testonly)
+            @info "Starting run …"
+            mlfrun = createrun(mlf, mlfexp; run_name=name_run)
+            name_run_final = mlfrun.info.run_name
+            @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
 
-    for (label, family, model, mkspace) in listvariants(N; testonly=testonly)
-        @info "Starting run …"
-        mlfrun = createrun(mlf, mlfexp; run_name=name_run)
-        name_run_final = mlfrun.info.run_name
-        @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
+            logparam(
+                mlf,
+                mlfrun,
+                Dict(
+                    "algorithm.family" => string(family),
+                    "algorithm.name" => label,
+                    "task.hash" => hash_task,
+                    "task.DX" => DX,
+                    "task.N" => "N",
+                ),
+            )
 
-        logparam(
-            mlf,
-            mlfrun,
-            Dict(
-                "algorithm.family" => string(family),
-                "algorithm.name" => label,
-                "task.hash" => hash_task,
-                "task.DX" => DX,
-                "task.N" => "N",
-            ),
-        )
+            @info "Tuning $label …"
+            mach_tuned, blacklist =
+                tune(model, mkspace, X, y; testonly=testonly)
 
-        @info "Tuning $label …"
-        mach_tuned, blacklist = tune(model, mkspace, X, y; testonly=testonly)
+            best_model = fitted_params(mach_tuned).model.best_model
+            # We don't log the best fitted params right (i.e. we only log
+            # hyperparameters) now because we retrain in `runbest` anyways.
+            # best_fitted_params =
+            #     fitted_params(mach_tuned).model.best_fitted_params.fitresult
 
-        best_model = fitted_params(mach_tuned).model.best_model
-        # We don't log the best fitted params right (i.e. we only log
-        # hyperparameters) now because we retrain in `runbest` anyways.
-        # best_fitted_params =
-        #     fitted_params(mach_tuned).model.best_fitted_params.fitresult
+            # Filter out blacklisted fieldnames.
+            params_model = filter(
+                kv -> kv.first ∉ blacklist,
+                Dict(pairs(params(best_model))),
+            )
 
-        # Filter out blacklisted fieldnames.
-        params_model =
-            filter(kv -> kv.first ∉ blacklist, Dict(pairs(params(best_model))))
+            # Note that for XCSF, we extract and log Julia model params (and not the
+            # underlying Python library's params) for now.
+            # TODO Log RNG seed
+            logartifact(mlf, mlfrun, "best_params.json", json(params_model))
 
-        # Note that for XCSF, we extract and log Julia model params (and not the
-        # underlying Python library's params) for now.
-        # TODO Log RNG seed
-        logartifact(mlf, mlfrun, "best_params.json", json(params_model))
-
-        @info "Finishing run $name_run_final …"
-        updaterun(mlf, mlfrun, "FINISHED")
-        @info "Finished run $name_run_final."
+            @info "Finishing run $name_run_final …"
+            updaterun(mlf, mlfrun, "FINISHED")
+            @info "Finished run $name_run_final."
+        end
     end
 end
 
@@ -305,84 +326,112 @@ function getoptparams(mlf, label, hash_task)
     return family, params
 end
 
-function runbest(fname; testonly=false, name_run=missing)
-    X, y, hash_task, X_test, y_test = readdata(fname)
-    N, DX = nrow(X), ncol(X)
+"""
+Run each configured ML algorithms using the best hyperparameters found by
+`optparams` on each of given learning tasks. Best hyperparameters are loaded
+from mlflow using a combination of ML algorithm label and learning task hash.
 
-    mlf = getmlf()
-    @info "Logging to mlflow tracking URI $(mlf.baseuri)."
+# Args
 
-    name_exp = "runbest"
-    @info "Setting experiment name to $name_exp …"
-    mlfexp = getorcreateexperiment(mlf, name_exp)
+- `fnames`: Name of NPZ files that each containing training data for one
+  learning task.
 
-    for (label, str_family, _, _) in listvariants(N; testonly=testonly)
-        @info "Starting run …"
-        mlfrun = createrun(mlf, mlfexp; run_name=name_run)
-        name_run_final = mlfrun.info.run_name
-        @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
+# Options
 
-        family, params = getoptparams(mlf, label, hash_task)
-        model = family(; params...)
+- `--name-run`: Give the runs performed (one per ML algorithm configured) the
+  same specific name.
 
-        logparam(
-            mlf,
-            mlfrun,
-            Dict(
-                "algorithm.family" => str_family,
-                "algorithm.name" => label,
-                "task.hash" => hash_task,
-                "task.DX" => DX,
-                "task.N" => "N",
-            ),
-        )
+# Flags
 
-        @info "Transforming training input data …"
-        # Note that we cannot use a pipeline here because we need the scaler
-        # later.
-        scaler = MinMaxScaler()
-        mach_scaler = machine(scaler, X)
-        MLJ.fit!(mach_scaler)
-        X = MLJ.transform(mach_scaler, X)
+- `--testonly`: Whether to perform very short runs that do not attempt to be
+  competitive (useful for testing the pipeline).
+"""
+@cast function runbest(
+    fnames...;
+    testonly::Bool=false,
+    name_run::Union{Missing,String}=missing,
+)
+    for fname in fnames
+        @info "Starting best-parametrization runs for learning task $fname."
+        X, y, hash_task, X_test, y_test = readdata(fname)
+        N, DX = nrow(X), ncol(X)
 
-        @info "Fitting best configuration of $label for task $(string(hash_task; base=16)) …"
-        mach = machine(model, X, y)
-        MLJ.fit!(mach)
+        mlf = getmlf()
+        @info "Logging to mlflow tracking URI $(mlf.baseuri)."
 
-        @info "Computing prediction metrics …"
-        y_pred = MLJ.predict_mean(mach, X)
-        y_test_pred = MLJ.predict_mean(mach, X_test)
+        name_exp = "runbest"
+        @info "Setting experiment name to $name_exp …"
+        mlfexp = getorcreateexperiment(mlf, name_exp)
 
-        mae_train = mae(y, y_pred)
-        mae_test = mae(y_test, y_test_pred)
-        rmse_train = rmse(y, y_pred)
-        rmse_test = rmse(y_test, y_test_pred)
+        for (label, str_family, _, _) in listvariants(N; testonly=testonly)
+            @info "Starting run …"
+            mlfrun = createrun(mlf, mlfexp; run_name=name_run)
+            name_run_final = mlfrun.info.run_name
+            @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
 
-        rs = rules(family, fitted_params(mach))
-        # We'd have to convert stuff to the MLJ table format if we wanted to use
-        # `inverse_transform` directly. I.e. convert `Intervals.Interval`'s
-        # bounds etc. to be feature name–based.
-        xmin = fitted_params(mach_scaler).xmin
-        xmax = fitted_params(mach_scaler).xmax
-        intervals =
-            inverse_transform_interval.(rs.intervals, Ref(xmin), Ref(xmax))
+            family, params = getoptparams(mlf, label, hash_task)
+            model = family(; params...)
 
-        mktempdir() do path
-            fpath = path * "/rules.jls"
-            serialize(fpath, intervals)
-            return logartifact(mlf, mlfrun, fpath)
+            logparam(
+                mlf,
+                mlfrun,
+                Dict(
+                    "algorithm.family" => str_family,
+                    "algorithm.name" => label,
+                    "task.hash" => hash_task,
+                    "task.DX" => DX,
+                    "task.N" => "N",
+                ),
+            )
+
+            @info "Transforming training input data …"
+            # Note that we cannot use a pipeline here because we need the scaler
+            # later.
+            scaler = MinMaxScaler()
+            mach_scaler = machine(scaler, X)
+            MLJ.fit!(mach_scaler)
+            X = MLJ.transform(mach_scaler, X)
+
+            @info "Fitting best configuration of $label for task $(string(hash_task; base=16)) …"
+            mach = machine(model, X, y)
+            MLJ.fit!(mach)
+
+            @info "Computing prediction metrics …"
+            y_pred = MLJ.predict_mean(mach, X)
+            y_test_pred = MLJ.predict_mean(mach, X_test)
+
+            mae_train = mae(y, y_pred)
+            mae_test = mae(y_test, y_test_pred)
+            rmse_train = rmse(y, y_pred)
+            rmse_test = rmse(y_test, y_test_pred)
+
+            rs = rules(family, fitted_params(mach))
+            # We'd have to convert stuff to the MLJ table format if we wanted to use
+            # `inverse_transform` directly. I.e. convert `Intervals.Interval`'s
+            # bounds etc. to be feature name–based.
+            xmin = fitted_params(mach_scaler).xmin
+            xmax = fitted_params(mach_scaler).xmax
+            intervals =
+                inverse_transform_interval.(rs.intervals, Ref(xmin), Ref(xmax))
+
+            mktempdir() do path
+                fpath = path * "/rules.jls"
+                serialize(fpath, intervals)
+                return logartifact(mlf, mlfrun, fpath)
+            end
+
+            logmetric.(
+                Ref(mlf),
+                Ref(mlfrun),
+                ["train.mae", "train.rmse", "test.mae", "test.rmse"],
+                [mae_train, rmse_train, mae_test, rmse_test],
+            )
+
+            @info "Finishing run $name_run_final …"
+            updaterun(mlf, mlfrun, "FINISHED")
+            @info "Finished run $name_run_final."
         end
-
-        logmetric.(
-            Ref(mlf),
-            Ref(mlfrun),
-            ["train.mae", "train.rmse", "test.mae", "test.rmse"],
-            [mae_train, rmse_train, mae_test, rmse_test],
-        )
-
-        @info "Finishing run $name_run_final …"
-        updaterun(mlf, mlfrun, "FINISHED")
-        @info "Finished run $name_run_final."
     end
-    return nothing
 end
+
+@main
