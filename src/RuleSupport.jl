@@ -73,9 +73,9 @@ function rules(::Type{XCSFRegressor}, fitresult)
                 l,
                 u;
                 # Preen's implementation's center spread intervals are fully
-                # open.
-                lopen=fill(true, DX),
-                uopen=fill(true, DX),
+                # closed.
+                lopen=fill(false, DX),
+                uopen=fill(false, DX),
             ),
             lowers,
             uppers,
