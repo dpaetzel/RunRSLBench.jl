@@ -36,8 +36,8 @@ for the rules' conditions.
 """
 function rules end
 
-function rules(::Type{XCSFRegressor}, fitresult)
-    pyxcsf = fitresult
+function rules(::Type{XCSFRegressor}, fitted_params)
+    pyxcsf = fitted_params.fitresult
     return_condition = true
     return_action = true
     return_prediction = true
