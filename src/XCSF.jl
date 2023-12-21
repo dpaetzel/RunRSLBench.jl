@@ -1,19 +1,17 @@
 module XCSF
 
-import MLJModelInterface
+using MLJModelInterface: MLJModelInterface
 const MMI = MLJModelInterface
 using PyCall
 using Tables
 
 export XCSFRegressor
 
-
 const PYXCSF = PyNULL()
 
 function __init__()
-    copy!(PYXCSF, pyimport("xcsf")["XCS"])
+    return copy!(PYXCSF, pyimport("xcsf")["XCS"])
 end
-
 
 # Defines the XCSF struct, a clean! method and a keyword constructor.
 MMI.@mlj_model mutable struct XCSFRegressor <: MMI.Deterministic
@@ -72,45 +70,44 @@ MMI.@mlj_model mutable struct XCSFRegressor <: MMI.Deterministic
     x_max::Float64 = 1.1
 end
 
-
 function MMI.fit(model::XCSFRegressor, verbosity, X, y)
     Xmat = Tables.matrix(X)
     N, DX = size(Xmat)
     # TODO Add remaining relevant parameters here
     model_ = PYXCSF(;
-        x_dim = DX,
-        y_dim = 1,
+        x_dim=DX,
+        y_dim=1,
         # 1 for supervised learning.
-        n_actions = 1,
+        n_actions=1,
         # We parallelize on another level.
-        omp_num_threads = 1,
+        omp_num_threads=1,
         # TODO Enable RNG determinism
-        random_state = -1,
-        pop_init = model.pop_init,
-        max_trials = model.max_trials,
+        random_state=-1,
+        pop_init=model.pop_init,
+        max_trials=model.max_trials,
         # We never want to eval performance during runtime.
-        perf_trials = model.max_trials + 1000,
-        pop_size = model.pop_size,
-        set_subsumption = model.set_subsumption,
-        theta_sub = model.theta_sub,
-        loss_func = model.loss_func,
-        e0 = model.e0,
-        alpha = model.alpha,
-        nu = model.nu,
-        beta = model.beta,
-        delta = model.delta,
-        theta_del = model.theta_del,
-        init_fitness = model.init_fitness,
-        init_error = model.init_error,
+        perf_trials=model.max_trials + 1000,
+        pop_size=model.pop_size,
+        set_subsumption=model.set_subsumption,
+        theta_sub=model.theta_sub,
+        loss_func=model.loss_func,
+        e0=model.e0,
+        alpha=model.alpha,
+        nu=model.nu,
+        beta=model.beta,
+        delta=model.delta,
+        theta_del=model.theta_del,
+        init_fitness=model.init_fitness,
+        init_error=model.init_error,
         # Number of trials since its creation that a rule must match at least 1
         # input or be deleted. We disable this feature.
-        m_probation = model.max_trials + 1000,
+        m_probation=model.max_trials + 1000,
         # Rules should retain state across trials.
-        stateful = true,
+        stateful=true,
         # If enabled and overall system error is below e0, the largest of 2
         # roulette spins is deleted.
-        compaction = false,
-        ea = Dict(
+        compaction=false,
+        ea=Dict(
             "select_type" => model.ea_select_type,
             "select_size" => model.ea_select_size,
             "theta_ea" => model.ea_theta_ea,
@@ -122,8 +119,8 @@ function MMI.fit(model::XCSFRegressor, verbosity, X, y)
             "pred_reset" => model.ea_pred_reset,
         ),
         # Supervised learning requires `"integer"` here.
-        action = Dict("type" => "integer"),
-        condition = Dict(
+        action=Dict("type" => "integer"),
+        condition=Dict(
             "type" => "hyperrectangle_csr",
             "args" => Dict(
                 "eta" => 0.0,
@@ -133,9 +130,9 @@ function MMI.fit(model::XCSFRegressor, verbosity, X, y)
             ),
         ),
         # TODO Support more than just constant models
-        prediction = Dict("type" => "constant"),
+        prediction=Dict("type" => "constant"),
     )
-    model_.fit(Xmat, y; verbose = false)
+    model_.fit(Xmat, y; verbose=false)
 
     fitresult = model_
     cache = nothing
@@ -144,7 +141,6 @@ function MMI.fit(model::XCSFRegressor, verbosity, X, y)
     return fitresult, cache, report
 end
 
-
 function MMI.predict(model::XCSFRegressor, fitresult, Xnew)
     Xnewmat = Tables.matrix(Xnew)
     model_ = fitresult
@@ -152,10 +148,8 @@ function MMI.predict(model::XCSFRegressor, fitresult, Xnew)
     return vec(yhat)
 end
 
-
 MMI.input_scitype(::Type{<:XCSFRegressor}) = MMI.Table(MMI.Continuous)
 MMI.target_scitype(::Type{<:XCSFRegressor}) = AbstractVector{MMI.Continuous}
-
 
 # TODO If fully package, fill out remaining fields
 # MMI.load_path(::Type{<:XCSFRegressor}) = ""
@@ -165,7 +159,6 @@ MMI.target_scitype(::Type{<:XCSFRegressor}) = AbstractVector{MMI.Continuous}
 # MMI.is_pure_julia(::Type{<:XCSFRegressor}) = false
 # MMI.package_license(::Type{<:XCSFRegressor}) = "unknown"
 
-
 # TODO Maybe return user-friendly form of fitted parameters
 # MMI.fitted_params(model::XCSFRegressor, fitresult) = fitresult
 
@@ -173,15 +166,12 @@ MMI.target_scitype(::Type{<:XCSFRegressor}) = AbstractVector{MMI.Continuous}
 # MMI.update(model::XCSFRegressor, verbosity, old_fitresult, old_cache, X, y) =
 #     MMI.fit(model, verbosity, X, y)
 
-
 # Optional, to specify default hyperparameter ranges (for use in tuning).
 # MMI.hyperparameter_ranges(XCSFRegressor) = (max_trials = (1, typemax(Int)))
-
 
 # Optionally, to customized support for serialization of machines (see
 # Serialization).
 # MMI.save(filename, model::SomeModel, fitresult; kwargs...) = fitresult
 # MMI.restore(filename, model::SomeModel, serializable_fitresult) -> serializable_fitresult
-
 
 end
