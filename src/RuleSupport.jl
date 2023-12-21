@@ -2,6 +2,7 @@ module RuleSupport
 
 using JSON
 using RunRSLBench.XCSF
+using RSLModels.GARegressors
 using RSLModels.Intervals
 using DecisionTree
 using MLJ
@@ -81,7 +82,7 @@ function rules(::Type{XCSFRegressor}, fitresult)
             uppers,
         ),
     )
-    return (intervals=intervals, predictions=preds)
+    return (; intervals=intervals, predictions=preds)
 end
 
 _leq_threshold = "<="
@@ -153,7 +154,11 @@ function rules(::Type{DT}, fitresult)
     out = Intervals.Interval[]
     addrules!(out, tree.node, [], [], [], length(feature_names))
     # TODO Consider to also export predictions
-    return (intervals=out,)
+    return (; intervals=out)
+end
+
+function rules(::Type{GARegressor}, fitted_params)
+    return (; intervals=fitted_params.fitresult.best.phenotype.conditions)
 end
 
 end

@@ -10,6 +10,7 @@ using NPZ
 using RSLModels.Intervals
 using RSLModels.MLFlowUtils
 using RSLModels.Transformers
+using RSLModels.GARegressors
 using RunRSLBench.RuleSupport
 using RunRSLBench.XCSF
 using Serialization
@@ -57,13 +58,13 @@ end
 function mkspace_xcsf(pipe, DX)
     return (;
         space=[
-            range(pipe, :(model.e0); lower=0.01, upper=0.2, scale=:log),
+            range(pipe, :e0; lower=0.01, upper=0.2, scale=:log),
             # TODO Consider even higher beta values as well?
-            range(pipe, :(model.beta); lower=0.001, upper=0.3, scale=:log),
+            range(pipe, :beta; lower=0.001, upper=0.3, scale=:log),
             # TODO Consider to use cube size
-            range(pipe, :(model.condition_spread_min); lower=0.01, upper=0.5),
-            range(pipe, :(model.ea_select_size); lower=0.1, upper=0.8),
-            range(pipe, :(model.ea_p_crossover); lower=0.0, upper=1.0),
+            range(pipe, :condition_spread_min; lower=0.01, upper=0.5),
+            range(pipe, :ea_select_size; lower=0.1, upper=0.8),
+            range(pipe, :ea_p_crossover; lower=0.0, upper=1.0),
         ],
         blacklist=[],
     )
@@ -86,13 +87,13 @@ function mkmkspace_dt(K_min, K_max, N)
             space=[
                 range(
                     pipe,
-                    :(model.max_depth);
+                    :max_depth;
                     lower=max_depth_min,
                     upper=max_depth_max,
                 ),
                 range(
                     pipe,
-                    :(model.min_samples_split);
+                    :min_samples_split;
                     lower=ceil(0.001 * N),
                     upper=ceil(0.05 * N),
                     # scale = :log,
@@ -105,11 +106,27 @@ function mkmkspace_dt(K_min, K_max, N)
     return mkspace_dt
 end
 
+function mkspace_mga(model, DX)
+    return (;
+        space=[range(model, :recomb_rate; lower=0.4, upper=1.0)],
+        blacklist=[:rng],
+    )
+end
+
 function fixparams!(::Type{DT}, params)
     return params[:feature_importance] = Symbol(params[:feature_importance])
 end
 
 function fixparams!(::Type{XCSFRegressor}, params)
+    return params
+end
+
+function fixparams!(::Type{GARegressor}, params)
+    params[:fiteval] = Symbol(params[:fiteval])
+    if params[:init_spread_max] == nothing
+        params[:init_spread_max] = Inf
+    end
+
     return params
 end
 
@@ -129,13 +146,15 @@ function listvariants(N; testonly=false)
         n_subfeatures=0,
     )
 
+    mga = GARegressor(; n_iter=ifelse(testonly, 10, 100))
+
     return [
         # WAIT For Preen fixing the ordering bug (should be #112 in XCSF repo), otherwise cannot set XCSF conditions
         ("XCSF100", "XCSFRegressor", xcsf, mkspace_xcsf),
-        # ("XCSF200", "XCSF", xcsf, mkspace_xcsf),
         # TODO Deduplicate DT and dt (instead of dt provide `params_fixed` or similar)
         ("DT2-50", "DT", dt, mkmkspace_dt(2, 50, N)),
-        ("DT2-100", "DT", dt, mkmkspace_dt(2, 100, N)),
+        # ("DT2-100", "DT", dt, mkmkspace_dt(2, 100, N)),
+        ("MGA", "GARegressor", mga, mkspace_mga),
     ]
 end
 
@@ -148,39 +167,35 @@ fname = "2-2-502-0-0.9-true.data.npz"
 # X_test, y_test = data["X_test"], data["y_test"]
 # X_test = MLJ.table(X_test)
 
-function mkpipe(model)
-    return Pipeline(; scaler=MinMaxScaler(), model=model)
-end
-
-function tune(model, mkspace, X, y)
-    # We don't use |> because we have to control the name given to each pipeline
-    # stage so we can set hyperparameters properly.
-    pipe = mkpipe(model)
-
+function tune(model, mkspace, X, y; testonly=false)
     N, DX = nrow(X), ncol(X)
 
-    sb = mkspace(pipe, DX)
+    # TODO Refactor model being provided here after pipe
+    sb = mkspace(model, DX)
     space = sb.space
     blacklist = sb.blacklist
 
-    pipe_tuned = TunedModel(;
-        model=pipe,
-        resampling=CV(; nfolds=5),
-        # TODO Right now TreeParzen does not support nested hyperparameters (see my
-        # issue on that).
-        # tuning = MLJTreeParzenTuning(),
-        tuning=LatinHypercube(; gens=30),
-        # TODO Increase resolution
-        # tuning = Grid(; resolution = 2),
-        range=space,
-        measure=mae,
-        # Number of models to evaluate. Note that without this, LatinHypercube fails
-        # with an obscure error message.
-        # TODO Increase number of models/make more fair wrt runtime
-        n=100,
+    pipe = Pipeline(;
+        scaler=MinMaxScaler(),
+        model=TunedModel(;
+            model=model,
+            resampling=CV(; nfolds=5),
+            # TODO Right now TreeParzen does not support nested hyperparameters (see my
+            # issue on that).
+            # tuning = MLJTreeParzenTuning(),
+            tuning=LatinHypercube(; gens=30),
+            # TODO Increase resolution
+            # tuning = Grid(; resolution = 2),
+            range=space,
+            measure=mae,
+            # Number of models to evaluate. Note that without this, LatinHypercube fails
+            # with an obscure error message.
+            # TODO Increase number of models/make more fair wrt runtime
+            n=ifelse(testonly, 2, 100),
+        ),
     )
 
-    mach_tuned = machine(pipe_tuned, X, y)
+    mach_tuned = machine(pipe, X, y)
     MLJ.fit!(mach_tuned)
 
     return mach_tuned, blacklist
@@ -236,16 +251,17 @@ function optparams(fname; testonly=false, name_run=missing)
         )
 
         @info "Tuning $label …"
-        mach_tuned, blacklist = tune(model, mkspace, X, y)
+        mach_tuned, blacklist = tune(model, mkspace, X, y; testonly=testonly)
 
-        best_model = fitted_params(mach_tuned).best_model
-        best_fitted_params = fitted_params(mach_tuned).best_fitted_params
+        best_model = fitted_params(mach_tuned).model.best_model
+        # We don't log the best fitted params right (i.e. we only log
+        # hyperparameters) now because we retrain in `runbest` anyways.
+        # best_fitted_params =
+        #     fitted_params(mach_tuned).model.best_fitted_params.fitresult
 
         # Filter out blacklisted fieldnames.
-        params_model = filter(
-            kv -> kv.first ∉ blacklist,
-            Dict(pairs(params(best_model.model))),
-        )
+        params_model =
+            filter(kv -> kv.first ∉ blacklist, Dict(pairs(params(best_model))))
 
         # Note that for XCSF, we extract and log Julia model params (and not the
         # underlying Python library's params) for now.
@@ -258,8 +274,6 @@ function optparams(fname; testonly=false, name_run=missing)
     end
 end
 
-label = "DT2-50"
-hash_task = 0xa71de19bb0e26f9a
 function getoptparams(mlf, label, hash_task)
     mlfexp = getexperiment(mlf, "optparams")
     mlfruns = searchruns(
@@ -272,6 +286,11 @@ function getoptparams(mlf, label, hash_task)
     )
 
     df = runs_to_df(mlfruns)
+
+    len = nrow(df)
+    df = dropmissing(df, "end_time")
+    len2 = nrow(df)
+    @info "Dropped $(len - len2) unfinished runs."
 
     df[!, "start_time"] .=
         Dates.unix2datetime.(round.(df.start_time / 1000)) .+
@@ -298,6 +317,7 @@ function getoptparams(mlf, label, hash_task)
 
     row = sort(df, "end_time")[end, :]
     family = getfield(Main, Symbol(row."params.algorithm.family"))
+
     fname_params = row.artifact_uri * "/best_params.json"
     params = JSON.parsefile(fname_params; dicttype=Dict{Symbol,Any})
     fixparams!(family, params)
@@ -350,8 +370,8 @@ function runbest(fname; testonly=false, name_run=missing)
         MLJ.fit!(mach)
 
         @info "Computing prediction metrics …"
-        y_pred = MLJ.predict(mach, X)
-        y_test_pred = MLJ.predict(mach, X_test)
+        y_pred = MLJ.predict_mean(mach, X)
+        y_test_pred = MLJ.predict_mean(mach, X_test)
 
         mae_train = mae(y, y_pred)
         mae_test = mae(y_test, y_test_pred)

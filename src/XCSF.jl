@@ -167,8 +167,7 @@ MMI.target_scitype(::Type{<:XCSFRegressor}) = AbstractVector{MMI.Continuous}
 
 
 # TODO Maybe return user-friendly form of fitted parameters
-MMI.fitted_params(model::XCSFRegressor, fitresult) = fitresult
-
+# MMI.fitted_params(model::XCSFRegressor, fitresult) = fitresult
 
 # Optional, to avoid redundant calculations when re-fitting machines associated with a model:
 # MMI.update(model::XCSFRegressor, verbosity, old_fitresult, old_cache, X, y) =
