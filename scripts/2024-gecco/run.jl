@@ -127,15 +127,43 @@ function listvariants(N; testonly=false)
         n_subfeatures=0,
     )
 
-    mga = GARegressor(; n_iter=ifelse(testonly, 10, 100))
+    mga_mae = GARegressor(;
+        n_iter=ifelse(testonly, 10, 100),
+        size_pop=32,
+        fiteval=:mae,
+        x_min=0.0,
+        x_max=1.0,
+        nmatch_min=2,
+        init=:inverse,
+        # TODO Derive from DX
+        init_length_min=3,
+        # TODO Derive from DX
+        init_length_max=30,
+        # TODO Derive from DX
+        init_spread_min=0.1,
+        init_spread_max=Inf,
+        init_params_spread_a=1.0,
+        init_params_spread_b=1.0,
+        # TODO Check how this is actually used (mutation, init, init_sample_fname, …)
+        init_rate_coverage_min=0.9,
+        # TODO Check with n_iter for being sensible
+        mutate_p_add=0.05,
+        mutate_p_rm=0.05,
+        mutate_rate_mut=1.0,
+        mutate_rate_std=0.05,
+        recomb_rate=0.9,
+        # TODO Select sensible value (probably interacts with init_length_min/max)
+        select_width_window=7,
+        # TODO Select sensible value
+        select_lambda_window=0.004,
+    )
 
     return [
-        # WAIT For Preen fixing the ordering bug (should be #112 in XCSF repo), otherwise cannot set XCSF conditions
-        ("XCSF100", "XCSFRegressor", xcsf, mkspace_xcsf),
+        # ("XCSF100", "XCSFRegressor", xcsf, mkspace_xcsf),
         # TODO Deduplicate DT and dt (instead of dt provide `params_fixed` or similar)
-        ("DT2-50", "DT", dt, mkmkspace_dt(2, 50, N)),
+        # ("DT2-50", "DT", dt, mkmkspace_dt(2, 50, N)),
         # ("DT2-100", "DT", dt, mkmkspace_dt(2, 100, N)),
-        ("MGA", "GARegressor", mga, mkspace_mga),
+        ("MGA-MAE", "GARegressor", mga_mae, mkspace_mga),
     ]
 end
 
