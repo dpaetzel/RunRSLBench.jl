@@ -1883,7 +1883,7 @@ deps = ["InteractiveUtils", "Markdown", "Sockets", "Unicode"]
 uuid = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 
 [[deps.RSLModels]]
-deps = ["Accessors", "AlgebraOfGraphics", "AutoHashEquals", "Base64", "BenchmarkTools", "CSV", "CairoMakie", "ColorSchemes", "Combinatorics", "Comonicon", "Cthulhu", "DataFrames", "Dates", "Debugger", "Distributed", "Distributions", "Infiltrator", "JET", "JSON", "JuliaFormatter", "KittyTerminalImages", "LaTeXStrings", "Latexify", "LibGit2", "LinearAlgebra", "MLFlowClient", "MLJ", "MLJClusteringInterface", "MLJLinearModels", "MLJModelInterface", "MLUtils", "Makie", "MathTeXEngine", "Memoize", "Missings", "Mmap", "NPZ", "NearestNeighborModels", "OhMyREPL", "OrderedCollections", "PProf", "ProgressMeter", "PyCall", "PyPlot", "Random", "Revise", "ScientificTypes", "Serialization", "Statistics", "StatsBase", "TOML", "Tables"]
+deps = ["Accessors", "AlgebraOfGraphics", "AutoHashEquals", "Base64", "BenchmarkTools", "CSV", "CairoMakie", "ColorSchemes", "Combinatorics", "Comonicon", "Cthulhu", "DataFrames", "Dates", "Debugger", "Distributed", "Distributions", "Infiltrator", "JET", "JSON", "JuliaFormatter", "KittyTerminalImages", "LaTeXStrings", "Latexify", "LibGit2", "LinearAlgebra", "MLFlowClient", "MLJ", "MLJClusteringInterface", "MLJLinearModels", "MLJModelInterface", "MLUtils", "Makie", "MathTeXEngine", "Memoize", "Missings", "Mmap", "NPZ", "NearestNeighborModels", "OhMyREPL", "OrderedCollections", "PProf", "ProgressMeter", "PyCall", "PyPlot", "Random", "Revise", "SHA", "ScientificTypes", "Serialization", "Statistics", "StatsBase", "TOML", "Tables"]
 path = "../RSLModels.jl"
 uuid = "b1ce8e41-73ae-4235-ac19-90cce97a943a"
 version = "1.0.0-DEV"

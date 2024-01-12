@@ -456,6 +456,21 @@ from mlflow using a combination of ML algorithm label and learning task hash.
                 [mae_train, rmse_train, mae_test, rmse_test],
             )
 
+            rep = report(mach)
+            n_iter = rep.n_iter
+            map(keys(rep)) do k
+                log = getfield(rep, k)
+                if log isa AbstractVector && length(log) == n_iter
+                    for i in eachindex(log)
+                        logmetric(mlf, mlfrun, string(k), log[i]; step=i)
+                    end
+                elseif log isa AbstractMatrix && size(log, 2) == n_iter
+                    for i in eachindex(eachcol(log))
+                        logmetric(mlf, mlfrun, string(k), log[:, i]; step=i)
+                    end
+                end
+            end
+
             @info "Finishing run $name_run_final …"
             updaterun(mlf, mlfrun, "FINISHED")
             @info "Finished run $name_run_final."
