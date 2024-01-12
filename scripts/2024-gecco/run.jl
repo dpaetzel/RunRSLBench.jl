@@ -104,6 +104,7 @@ end
 
 function fixparams!(::Type{GARegressor}, params)
     params[:fiteval] = Symbol(params[:fiteval])
+    params[:init] = Symbol(params[:init])
     if params[:init_spread_max] == nothing
         params[:init_spread_max] = Inf
     end
