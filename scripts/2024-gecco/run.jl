@@ -197,7 +197,7 @@ function tune(model, mkspace, X, y; testonly=false)
     )
 
     mach_tuned = machine(pipe, X, y)
-    MLJ.fit!(mach_tuned)
+    MLJ.fit!(mach_tuned; verbosity=1000)
 
     return mach_tuned, blacklist
 end
