@@ -7,6 +7,7 @@ using TOML
 using Missings
 using MLFlowClient
 using MLJ
+using MLJTuning
 using NPZ
 using RSLModels.Intervals
 using RSLModels.MLFlowUtils
@@ -168,6 +169,46 @@ function listvariants(N; testonly=false)
     ]
 end
 
+function userextras(::DT)
+    function _userextras(model, fitted_params_per_fold)
+        # TODO Probably unnecessary
+    end
+
+    return _userextras
+end
+
+function userextras(::XCSFRegressor)
+    function _userextras(model, fitted_params_per_fold)
+        # TODO Probably unnecessary
+    end
+
+    return _userextras
+end
+
+function userextras(::GARegressor)
+    function _userextras(model, fitted_params_per_fold)
+        return MLJ.recursive_getproperty.(
+            fitted_params_per_fold,
+            Ref(:(fitresult.best.fitness)),
+        )
+    end
+
+    return _userextras
+end
+
+struct UserextraSelection <: MLJTuning.SelectionHeuristic end
+
+function MLJTuning.best(::UserextraSelection, history)
+    # We score using mean of CV here. I'm not that confident that this is the
+    # best choice (e.g. median would be another option).
+    scores = mean.(getproperty.(history, :userextras))
+    index_best = argmin(scores)
+    return history[index_best]
+end
+
+# Let's pirate some types. Julia, please forgive me.
+MLJTuning.supports_heuristic(::LatinHypercube, ::UserextraSelection) = true
+
 function tune(model, mkspace, X, y; testonly=false)
     N, DX = nrow(X), ncol(X)
 
@@ -185,14 +226,22 @@ function tune(model, mkspace, X, y; testonly=false)
             # issue on that).
             # tuning = MLJTreeParzenTuning(),
             tuning=LatinHypercube(; gens=30),
-            # TODO Increase resolution
-            # tuning = Grid(; resolution = 2),
             range=space,
             measure=mae,
+            selection_heuristic=ifelse(
+                model isa GARegressor,
+                UserextraSelection(),
+                NaiveSelection(),
+            ),
             # Number of models to evaluate. Note that without this, LatinHypercube fails
             # with an obscure error message.
             # TODO Increase number of models/make more fair wrt runtime
             n=ifelse(testonly, 2, 100),
+            userextras=ifelse(
+                model isa GARegressor,
+                userextras(model),
+                (_, _) -> nothing,
+            ),
         ),
     )
 
@@ -282,7 +331,7 @@ tasks, logging results to mlflow.
 
             best_model = fitted_params(mach_tuned).model.best_model
             # We don't log the best fitted params right (i.e. we only log
-            # hyperparameters) now because we retrain in `runbest` anyways.
+            # hyperparameters) now because we retrain in `runbest` anyway.
             # best_fitted_params =
             #     fitted_params(mach_tuned).model.best_fitted_params.fitresult
 
