@@ -3,6 +3,7 @@ module XCSF
 using MLJModelInterface: MLJModelInterface
 const MMI = MLJModelInterface
 using PyCall
+using Random
 using Tables
 
 export XCSFRegressor
@@ -71,7 +72,13 @@ MMI.@mlj_model mutable struct XCSFRegressor <: MMI.Deterministic
     # Maximum value of each input space dimension (use min-max normalization!).
     # TODO Enforce x_max > x_min
     x_max::Float64 = 1.1
+    # RNG.
+    rng::Union{AbstractRNG,Integer} = Random.GLOBAL_RNG
 end
+
+# https://github.com/JuliaAI/DecisionTree.jl/blob/8d565b562887f081c5076496b610dbea4c56dca9/src/DecisionTree.jl#L158
+mkrng(rng::Random.AbstractRNG) = rng
+mkrng(seed::T) where {T<:Integer} = Random.Xoshiro(seed)
 
 function MMI.fit(model::XCSFRegressor, verbosity, X, y)
     Xmat = Tables.matrix(X)
@@ -85,8 +92,10 @@ function MMI.fit(model::XCSFRegressor, verbosity, X, y)
         n_actions=1,
         # We parallelize on another level.
         omp_num_threads=1,
-        # TODO Enable RNG determinism
-        random_state=-1,
+        # Since I'm not sure right now how RNGs interact from Julia to Python/C,
+        # we'll simply use a seed here. This is the range of allowed NumPy
+        # legacy RNG seeds.
+        random_state=rand(mkrng(model.rng), 0:(2^32 - 1)),
         pop_init=model.pop_init,
         max_trials=model.max_trials,
         # We assess performance 20 times during training (relevant for Early
