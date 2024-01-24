@@ -21,11 +21,7 @@ tasks, logging results to mlflow.
 - `--testonly`: Whether to perform very short runs that do not attempt to be
   competitive (useful for testing the pipeline).
 """
-@cast function optparams(
-    fnames...;
-    testonly::Bool=false,
-    name_run::Union{Missing,String}=missing,
-)
+@cast function optparams(fnames...; testonly::Bool=false, name_run::String="")
     return _optparams(fnames...; testonly=testonly, name_run=name_run)
 end
 
@@ -49,11 +45,7 @@ from mlflow using a combination of ML algorithm label and learning task hash.
 - `--testonly`: Whether to perform very short runs that do not attempt to be
   competitive (useful for testing the pipeline).
 """
-@cast function runbest(
-    fnames...;
-    testonly::Bool=false,
-    name_run::Union{Missing,String}=missing,
-)
+@cast function runbest(fnames...; testonly::Bool=false, name_run::String="")
     return _runbest(fnames...; testonly=testonly, name_run=name_run)
 end
 

@@ -133,11 +133,7 @@ function readdata(fname)
     return (X, y, hash_task, X_test, y_test)
 end
 
-function _optparams(
-    fnames...;
-    testonly::Bool=false,
-    name_run::Union{Missing,String}=missing,
-)
+function _optparams(fnames...; testonly::Bool=false, name_run::String="")
     # TODO Random seeding
     # TODO Random seeding for XCSF
 
@@ -156,7 +152,11 @@ function _optparams(
 
         for variant in listvariants(N; testonly=testonly)
             @info "Starting run …"
-            mlfrun = createrun(mlf, mlfexp; run_name=name_run)
+            mlfrun = createrun(
+                mlf,
+                mlfexp;
+                run_name=ifelse(name_run == "", missing, name_run),
+            )
             name_run_final = mlfrun.info.run_name
             @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
 
@@ -285,7 +285,7 @@ function _runbest(
     fnames...;
     seed::Int=0,
     testonly::Bool=false,
-    name_run::Union{Missing,String}=missing,
+    name_run::String="",
 )
     for (i, fname) in enumerate(fnames)
         @info "Starting best-parametrization runs for learning task $fname."
@@ -302,7 +302,11 @@ function _runbest(
 
         for (label, str_family, _, _) in listvariants(N; testonly=testonly)
             @info "Starting run …"
-            mlfrun = createrun(mlf, mlfexp; run_name=name_run)
+            mlfrun = createrun(
+                mlf,
+                mlfexp;
+                run_name=ifelse(name_run == "", missing, name_run),
+            )
             name_run_final = mlfrun.info.run_name
             @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
 
