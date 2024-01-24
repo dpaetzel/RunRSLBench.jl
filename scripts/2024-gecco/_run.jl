@@ -141,8 +141,9 @@ function _optparams(
     # TODO Random seeding
     # TODO Random seeding for XCSF
 
-    for fname in fnames
+    for (i, fname) in enumerate(fnames)
         @info "Starting hyperparameter optimization for learning task $fname."
+        @info "This is task $i of $(length(fnames))"
         X, y, hash_task, _, _ = readdata(fname)
         N, DX = nrow(X), ncol(X)
 
@@ -286,8 +287,9 @@ function _runbest(
     testonly::Bool=false,
     name_run::Union{Missing,String}=missing,
 )
-    for fname in fnames
+    for (i, fname) in enumerate(fnames)
         @info "Starting best-parametrization runs for learning task $fname."
+        @info "This is task $i of $(length(fnames))"
         X, y, hash_task, X_test, y_test = readdata(fname)
         N, DX = nrow(X), ncol(X)
 
