@@ -38,6 +38,8 @@
                 ]);
 
               languages.julia.enable = true;
+
+              packages = [ pkgs.parallel ];
             }];
           };
           devShell.${system} = default;
