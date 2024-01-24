@@ -8,9 +8,12 @@ using Tables
 export XCSFRegressor
 
 const PYXCSF = PyNULL()
+const PYEarlyStoppingCallback = PyNULL()
 
 function __init__()
-    return copy!(PYXCSF, pyimport("xcsf")["XCS"])
+    copy!(PYXCSF, pyimport("xcsf")["XCS"])
+    copy!(PYEarlyStoppingCallback, pyimport("xcsf")["EarlyStoppingCallback"])
+    return nothing
 end
 
 # Defines the XCSF struct, a clean! method and a keyword constructor.
@@ -73,6 +76,7 @@ end
 function MMI.fit(model::XCSFRegressor, verbosity, X, y)
     Xmat = Tables.matrix(X)
     N, DX = size(Xmat)
+    n_trials_per_epoch = Int(ceil(model.max_trials / 20))
     # TODO Add remaining relevant parameters here
     model_ = PYXCSF(;
         x_dim=DX,
@@ -85,8 +89,9 @@ function MMI.fit(model::XCSFRegressor, verbosity, X, y)
         random_state=-1,
         pop_init=model.pop_init,
         max_trials=model.max_trials,
-        # We never want to eval performance during runtime.
-        perf_trials=model.max_trials + 1000,
+        # We assess performance 20 times during training (relevant for Early
+        # Stopping). This is a rather arbitrary number.
+        perf_trials=n_trials_per_epoch,
         pop_size=model.pop_size,
         set_subsumption=model.set_subsumption,
         theta_sub=model.theta_sub,
@@ -132,11 +137,38 @@ function MMI.fit(model::XCSFRegressor, verbosity, X, y)
         # TODO Support more than just constant models
         prediction=Dict("type" => "constant"),
     )
-    model_.fit(Xmat, y; verbose=false)
+    model_.fit(
+        Xmat,
+        y;
+        verbose=false,
+        callbacks=[
+            PYEarlyStoppingCallback(;
+                # Which metric to monitor: {"train", "val"}. We simply monitor
+                # train because we do not train-val split for now.
+                monitor="train",
+                # Trials with no improvement after which training will be stopped.
+                # Note that early stopping is checked only after each epoch
+                # anyways so we choose a number of epochs here.
+                patience=2 * n_trials_per_epoch,
+                # Whether to restore the best population after terminating. For
+                # now I'll assume that compaction happens in the end and we
+                # don't want do undo sensible stuff like that.
+                # TODO Evaluate whether `restore_best` should be `true`.
+                restore_best=true,
+                # Minimum change to qualify as an improvement.
+                min_delta=0,
+                # Trials to wait before starting to monitor improvement.
+                start_from=0,
+                # Whether to display when an action is taken.
+                # TODO Disable this, for debugging only
+                verbose=verbosity >= 10,
+            ),
+        ],
+    )
 
     fitresult = model_
     cache = nothing
-    report = (;)
+    report = (; metrics=model_.get_metrics())
 
     return fitresult, cache, report
 end
