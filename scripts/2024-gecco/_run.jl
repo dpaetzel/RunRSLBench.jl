@@ -51,7 +51,13 @@ end
 
 function listvariants(N; testonly=false)
     return [
-        mkvariant(GARegressor, :mae, 32; crossover=false, testonly=testonly),
+        mkvariant(
+            GARegressor,
+            :posterior,
+            32;
+            crossover=false,
+            testonly=testonly,
+        ),
         mkvariant(DT, N, 1, 70; testonly=testonly),
         mkvariant(XCSFRegressor, N, 200; testonly=testonly),
         mkvariant(XCSFRegressor, N, 400; testonly=testonly),
