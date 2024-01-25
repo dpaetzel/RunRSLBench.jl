@@ -82,11 +82,15 @@ function getmlf()
     return MLFlow(mlflow_url; headers=headers)
 end
 
-# TODO Add a struct for variants (currently a named tuple)
-
-function listvariants(N; testonly=false)
+function listvariants(N, dgmodel; testonly=false)
     return [
-        mkvariant(GARegressor, 32; crossover=false, testonly=testonly),
+        mkvariant(
+            GARegressor,
+            32,
+            dgmodel;
+            crossover=false,
+            testonly=testonly,
+        ),
         mkvariant(DT, N, 1, 70; testonly=testonly),
         mkvariant(XCSFRegressor, N, 200; testonly=testonly),
         mkvariant(XCSFRegressor, N, 500; testonly=testonly),
@@ -111,9 +115,7 @@ function tune(model, mkspace, X, y; testonly=false)
     N, DX = nrow(X), ncol(X)
 
     # TODO Refactor model being provided here after pipe
-    sb = mkspace(model, DX)
-    space = sb.space
-    blacklist = sb.blacklist
+    space = mkspace(model, DX)
 
     pipe = Pipeline(;
         scaler=MinMaxScaler(),
@@ -146,7 +148,7 @@ function tune(model, mkspace, X, y; testonly=false)
     mach_tuned = machine(pipe, X, y)
     MLJ.fit!(mach_tuned; verbosity=1000)
 
-    return mach_tuned, blacklist
+    return mach_tuned
 end
 
 function readdata(fname)
@@ -172,6 +174,7 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
     for (i, fname) in enumerate(fnames)
         @info "Starting hyperparameter optimization for learning task $fname."
         @info "This is task $i of $(length(fnames))"
+        @info "Reading training data …"
         X, y, hash_task, _, _ = readdata(fname)
         N, DX = nrow(X), ncol(X)
 
@@ -182,7 +185,10 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
         @info "Setting experiment name to $name_exp …"
         mlfexp = getorcreateexperiment(mlf, name_exp)
 
-        for variant in listvariants(N; testonly=testonly)
+        # Since we don't access dgmodel for `_optparams`, we can supply
+        # `nothing` in its stead. (Not nice, but why access the disk if there's
+        # no need …)
+        for variant in listvariants(N, nothing; testonly=testonly)
             @info "Starting run …"
             mlfrun = createrun(
                 mlf,
@@ -205,7 +211,7 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
             )
 
             @info "Tuning $(variant.label) …"
-            mach_tuned, blacklist =
+            mach_tuned =
                 tune(variant.model, variant.mkspace, X, y; testonly=testonly)
 
             history = report(mach_tuned).model.history
@@ -256,7 +262,7 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
 
             # Filter out blacklisted fieldnames.
             params_model = filter(
-                kv -> kv.first ∉ blacklist,
+                kv -> kv.first ∉ blacklist(variant.model),
                 Dict(pairs(params(best_model))),
             )
 
@@ -322,10 +328,10 @@ function getoptparams(mlf, label, hash_task)
     family = getfield(Main, Symbol(row."params.algorithm.family"))
 
     fname_params = row.artifact_uri * "/best_params.json"
-    params = JSON.parsefile(fname_params; dicttype=Dict{Symbol,Any})
-    fixparams!(family, params)
+    paramsdict = JSON.parsefile(fname_params; dicttype=Dict{Symbol,Any})
+    fixparams!(family, paramsdict)
 
-    return family, params
+    return family, paramsdict
 end
 
 function _runbest(
@@ -340,6 +346,9 @@ function _runbest(
         X, y, hash_task, X_test, y_test = readdata(fname)
         N, DX = nrow(X), ncol(X)
 
+        @info "Deserializing data generating model …"
+        dgmodel = deserialize(replace(fname, ".data.npz" => ".task.jls"))
+
         mlf = getmlf()
         @info "Logging to mlflow tracking URI $(mlf.baseuri)."
 
@@ -347,11 +356,11 @@ function _runbest(
         @info "Setting experiment name to $name_exp …"
         mlfexp = getorcreateexperiment(mlf, name_exp)
 
-        for variant in listvariants(N; testonly=testonly)
+        for variant in listvariants(N, dgmodel.model; testonly=testonly)
             str_family = variant.family
 
-            family, params = getoptparams(mlf, variant.label, hash_task)
-            model = family(; params...)
+            family, paramsdict = getoptparams(mlf, variant.label, hash_task)
+            model = family(; paramsdict...)
             model.rng = seed
 
             # For some algorithms we only optimize a certain config and then
@@ -379,6 +388,7 @@ function _runbest(
                     name_run_final = mlfrun.info.run_name
                     @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
 
+                    @info "Logging hyperparameters to mlflow …"
                     logparam(
                         mlf,
                         mlfrun,
@@ -391,12 +401,18 @@ function _runbest(
                         ),
                     )
 
+                    # TODO Deduplicate with above
+                    paramsdict = filter(
+                        kv -> kv.first ∉ blacklist(model),
+                        Dict(pairs(params(model))),
+                    )
+                    fixparams!(family, paramsdict)
                     logparam(
                         mlf,
                         mlfrun,
                         Dict([
                             ("algorithm.param." * string(k), v) for
-                            (k, v) in pairs(params)
+                            (k, v) in paramsdict
                         ]),
                     )
 

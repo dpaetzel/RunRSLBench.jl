@@ -65,21 +65,22 @@ end
 
 function mkspace_xcsf(model, DX)
     # I personally find it very annoying that I have to provide `model` to this.
-    return (;
-        space=[
-            range(model, :e0; lower=0.01, upper=0.2, scale=:log),
-            # TODO Consider even higher beta values as well?
-            range(model, :beta; lower=0.001, upper=0.3, scale=:log),
-            range(model, :nu; lower=1, upper=10),
-            # Note that the actual maximum spread possible is 0.6 since XCSF's
-            # conditions are allowed to be in [-0.1, 1.1] to allow some wiggle
-            # room for the GA (data is in [0.0, 1.0] only).
-            range(model, :condition_spread_min; lower=0.01, upper=0.5),
-            # range(model, :ea_select_size; lower=0.1, upper=0.8),
-            # range(model, :ea_p_crossover; lower=0.0, upper=1.0),
-        ],
-        blacklist=[:rng],
-    )
+    return [
+        range(model, :e0; lower=0.01, upper=0.2, scale=:log),
+        # TODO Consider even higher beta values as well?
+        range(model, :beta; lower=0.001, upper=0.3, scale=:log),
+        range(model, :nu; lower=1, upper=10),
+        # Note that the actual maximum spread possible is 0.6 since XCSF's
+        # conditions are allowed to be in [-0.1, 1.1] to allow some wiggle
+        # room for the GA (data is in [0.0, 1.0] only).
+        range(model, :condition_spread_min; lower=0.01, upper=0.5),
+        # range(model, :ea_select_size; lower=0.1, upper=0.8),
+        # range(model, :ea_p_crossover; lower=0.0, upper=1.0),
+    ]
+end
+
+function blacklist(::XCSFRegressor)
+    return [:rng]
 end
 
 function fixparams!(::Type{XCSFRegressor}, params)

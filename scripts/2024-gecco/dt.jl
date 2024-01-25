@@ -26,27 +26,23 @@ function mkmkspace_dt(K_min, K_max, N)
     max_depth_max = max(max_depth_min + 1, ceil(log2(K_max / 2)))
 
     function mkspace_dt(pipe, DX)
-        return (;
-            space=[
-                range(
-                    pipe,
-                    :max_depth;
-                    lower=max_depth_min,
-                    upper=max_depth_max,
-                ),
-                range(
-                    pipe,
-                    :min_samples_split;
-                    lower=ceil(0.001 * N),
-                    upper=ceil(0.05 * N),
-                    # scale = :log,
-                ),
-            ],
-            blacklist=[:rng],
-        )
+        return [
+            range(pipe, :max_depth; lower=max_depth_min, upper=max_depth_max),
+            range(
+                pipe,
+                :min_samples_split;
+                lower=ceil(0.001 * N),
+                upper=ceil(0.05 * N),
+                # scale = :log,
+            ),
+        ]
     end
 
     return mkspace_dt
+end
+
+function blacklist(::DT)
+    return [:rng]
 end
 
 function fixparams!(::Type{DT}, params)

@@ -44,13 +44,14 @@ function basemodel(
 end
 
 function mkspace_mga(model, DX)
-    return (;
-        space=[
-            range(model, :select_width_window; values=collect(3:2:15)),
-            range(model, :nmatch_min; values=[2, 3, 5, 8]),
-        ],
-        blacklist=[:rng],
-    )
+    return [
+        range(model, :select_width_window; values=collect(3:2:15)),
+        range(model, :nmatch_min; values=[2, 3, 5, 8]),
+    ]
+end
+
+function blacklist(::GARegressor)
+    return [:rng, :dgmodel]
 end
 
 function fixparams!(::Type{GARegressor}, params)
@@ -76,29 +77,11 @@ end
 
 function mkvariant(
     ::Type{GARegressor},
-    size_pop;
+    size_pop,
+    dgmodel;
     crossover=true,
     testonly=false,
 )
-    # return (;
-    #     label="MGA$size_pop-posterior",
-    #     family="GARegressor",
-    #     model=basemodel(
-    #         GARegressor,
-    #         :posterior,
-    #         size_pop,
-    #         crossover;
-    #         testonly=testonly,
-    #     ),
-    #     mkspace=mkspace_mga,
-    #     furtherrunbest=[
-    #         (;
-    #             label="MGA$size_pop-mae",
-    #             # TODO :similarity
-    #             params_override=[:fiteval => :mae],
-    #         ),
-    #     ],
-    # )
     return Variant(
         "MGA$size_pop-posterior",
         "GARegressor",
@@ -110,10 +93,11 @@ function mkvariant(
             testonly=testonly,
         ),
         mkspace_mga,
-        [Override(
-            "MGA$size_pop-mae",
-            # TODO :similarity
-            [:fiteval => :mae],
-        )],
+        [
+            Override(
+                "MGA$size_pop-similarity",
+                [:fiteval => :similarity, :dgmodel => dgmodel],
+            ),
+        ],
     )
 end
