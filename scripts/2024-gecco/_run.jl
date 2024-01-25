@@ -192,7 +192,7 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
                     logmetric(
                         mlf,
                         mlfrun,
-                        "userextras",
+                        "measures",
                         # I don't know why right now but entries in
                         # `measures_per_fold` are wrapped in another array.
                         measures_per_fold[i][1];
