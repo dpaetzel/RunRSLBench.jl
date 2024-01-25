@@ -182,10 +182,14 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
             mach_tuned, blacklist =
                 tune(variant.model, variant.mkspace, X, y; testonly=testonly)
 
-            measures_per_fold =
-                getproperty.(report(mach_tuned).model.history, :per_fold)
-            userextras_per_fold =
-                getproperty.(report(mach_tuned).model.history, :userextras)
+            history = report(mach_tuned).model.history
+
+            measures_per_fold = getproperty.(history, :per_fold)
+
+            # Since `TunedModel` only supports measures that only depend on `y`
+            # and `ypred`, we log GARegressor's fitness using the userextras
+            # mechanism.
+            userextras_per_fold = getproperty.(history, :userextras)
 
             for i in eachindex(measures_per_fold)
                 if i != nothing
@@ -213,11 +217,15 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
                 end
             end
 
-            best_model = fitted_params(mach_tuned).model.best_model
-            # We don't log the best fitted params right (i.e. we only log
-            # hyperparameters) now because we retrain in `runbest` anyway.
-            # best_fitted_params =
-            #     fitted_params(mach_tuned).model.best_fitted_params.fitresult
+            best_model = if variant.model isa GARegressor
+                # Determine best_model for `GARegressor` based on `userextras`
+                # (where we log the fitness to).
+                index_best = argmax(mean.(userextras_per_fold))
+                history[index_best].model
+
+            else
+                fitted_params(mach_tuned).model.best_model
+            end
 
             # Filter out blacklisted fieldnames.
             params_model = filter(
