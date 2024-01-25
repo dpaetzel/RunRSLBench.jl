@@ -91,8 +91,6 @@ function listvariants(N; testonly=false)
         mkvariant(XCSFRegressor, N, 200; testonly=testonly),
         mkvariant(XCSFRegressor, N, 500; testonly=testonly),
         mkvariant(XCSFRegressor, N, 1000; testonly=testonly),
-        # TODO Deduplicate DT and dt (instead of dt provide `params_fixed` or similar)
-        # ("MGA-MAE", "GARegressor", mga_mae, mkspace_mga),
     ]
 end
 
@@ -102,7 +100,7 @@ function MLJTuning.best(::UserextraSelection, history)
     # We score using mean of CV here. I'm not that confident that this is the
     # best choice (e.g. median would be another option).
     scores = mean.(getproperty.(history, :userextras))
-    index_best = argmin(scores)
+    index_best = argmax(scores)
     return history[index_best]
 end
 
@@ -245,14 +243,15 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
                 end
             end
 
-            best_model = if variant.model isa GARegressor
+            best_model = fitted_params(mach_tuned).model.best_model
+
+            # Cheap sanity check for whether we extracted the correct model
+            # using the `userextras` interface.
+            if variant.model isa GARegressor
                 # Determine best_model for `GARegressor` based on `userextras`
                 # (where we log the fitness to).
                 index_best = argmax(mean.(userextras_per_fold))
-                history[index_best].model
-
-            else
-                fitted_params(mach_tuned).model.best_model
+                @assert history[index_best].model == best_model
             end
 
             # Filter out blacklisted fieldnames.
