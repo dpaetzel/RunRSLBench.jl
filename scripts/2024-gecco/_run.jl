@@ -89,9 +89,8 @@ function listvariants(N; testonly=false)
         mkvariant(GARegressor, 32; crossover=false, testonly=testonly),
         mkvariant(DT, N, 1, 70; testonly=testonly),
         mkvariant(XCSFRegressor, N, 200; testonly=testonly),
-        mkvariant(XCSFRegressor, N, 400; testonly=testonly),
-        mkvariant(XCSFRegressor, N, 800; testonly=testonly),
-        mkvariant(XCSFRegressor, N, 1600; testonly=testonly),
+        mkvariant(XCSFRegressor, N, 500; testonly=testonly),
+        mkvariant(XCSFRegressor, N, 1000; testonly=testonly),
         # TODO Deduplicate DT and dt (instead of dt provide `params_fixed` or similar)
         # ("MGA-MAE", "GARegressor", mga_mae, mkspace_mga),
     ]
