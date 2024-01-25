@@ -284,6 +284,12 @@ function getoptparams(mlf, label, hash_task)
         ),
     )
 
+    if isempty(mlfruns)
+        error(
+            "No optimized hyperparameters for algorithm $label on task $hash_task. Run `optparams` first.",
+        )
+    end
+
     df = runs_to_df(mlfruns)
 
     len = nrow(df)
@@ -310,7 +316,7 @@ function getoptparams(mlf, label, hash_task)
         @warn "Ambiguous optparams entries (total of $(length(mlfruns))) in MLflow tracking server, using most recent"
     elseif length(mlfruns) < 1
         error(
-            "No optimized hyperparameters for algorithm $label on task $hash_task. Run `optparams` first.",
+            "No optimized hyperparameters for algorithm $label on task $hash_task. Run `optparams` fully first.",
         )
     end
 
