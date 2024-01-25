@@ -76,21 +76,44 @@ end
 
 function mkvariant(
     ::Type{GARegressor},
-    fiteval,
     size_pop;
     crossover=true,
     testonly=false,
 )
-    return (;
-        label="MGA$size_pop-$fiteval",
-        family="GARegressor",
-        model=basemodel(
+    # return (;
+    #     label="MGA$size_pop-posterior",
+    #     family="GARegressor",
+    #     model=basemodel(
+    #         GARegressor,
+    #         :posterior,
+    #         size_pop,
+    #         crossover;
+    #         testonly=testonly,
+    #     ),
+    #     mkspace=mkspace_mga,
+    #     furtherrunbest=[
+    #         (;
+    #             label="MGA$size_pop-mae",
+    #             # TODO :similarity
+    #             params_override=[:fiteval => :mae],
+    #         ),
+    #     ],
+    # )
+    return Variant(
+        "MGA$size_pop-posterior",
+        "GARegressor",
+        basemodel(
             GARegressor,
-            fiteval,
+            :posterior,
             size_pop,
             crossover;
             testonly=testonly,
         ),
-        mkspace=mkspace_mga,
+        mkspace_mga,
+        [Override(
+            "MGA$size_pop-mae",
+            # TODO :similarity
+            [:fiteval => :mae],
+        )],
     )
 end

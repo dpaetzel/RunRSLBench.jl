@@ -27,6 +27,39 @@ Fixed parameter values that we do not optimize over.
 """
 function basemodel end
 
+"""
+A configuration to evaluate specified as a label for that configuration and a
+set of hyperparameter overrides to apply to another base configuration.
+"""
+struct Override
+    label::String
+    paramoverrides::Vector{<:Pair}
+end
+
+"""
+A configuration (`model`) to optimize hyperparameters for. `mkspace` defines the
+ranges for hyperparameter optimization.
+
+`additional` is a list of configuration “deltas” that are to be evaluated as
+well (i.e. their hyperparameters are not optimized but the same hyperparameters
+as the ones of the “main” configuration are used safe for some being overwritten
+(see `Override`)).
+"""
+struct Variant
+    # Label to use for this variant.
+    label::String
+    # This variant's algorithm family.
+    family::String
+    # Base model to use (i.e. the fixed hyperparameters during hyperparameter
+    # optimization).
+    model
+    # Ranges for hyperparameter optimization.
+    mkspace::Function
+    # Given optimized hyperparameters, which other configurations to evaluate
+    # using those.
+    additional::Vector{Override}
+end
+
 # Include algorithm configurations, parametrizations and hyperparameter ranges.
 include(joinpath(@__DIR__, "dt.jl"))
 include(joinpath(@__DIR__, "xcsf.jl"))
@@ -49,15 +82,11 @@ function getmlf()
     return MLFlow(mlflow_url; headers=headers)
 end
 
+# TODO Add a struct for variants (currently a named tuple)
+
 function listvariants(N; testonly=false)
     return [
-        mkvariant(
-            GARegressor,
-            :posterior,
-            32;
-            crossover=false,
-            testonly=testonly,
-        ),
+        mkvariant(GARegressor, 32; crossover=false, testonly=testonly),
         mkvariant(DT, N, 1, 70; testonly=testonly),
         mkvariant(XCSFRegressor, N, 200; testonly=testonly),
         mkvariant(XCSFRegressor, N, 400; testonly=testonly),
@@ -314,107 +343,144 @@ function _runbest(
         @info "Setting experiment name to $name_exp …"
         mlfexp = getorcreateexperiment(mlf, name_exp)
 
-        for (label, str_family, _, _) in listvariants(N; testonly=testonly)
-            @info "Starting run …"
-            mlfrun = createrun(
-                mlf,
-                mlfexp;
-                run_name=ifelse(name_run == "", missing, name_run),
-            )
-            name_run_final = mlfrun.info.run_name
-            @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
+        for variant in listvariants(N; testonly=testonly)
+            str_family = variant.family
 
-            family, params = getoptparams(mlf, label, hash_task)
+            family, params = getoptparams(mlf, variant.label, hash_task)
             model = family(; params...)
             model.rng = seed
 
-            logparam(
-                mlf,
-                mlfrun,
-                Dict(
-                    "algorithm.family" => str_family,
-                    "algorithm.name" => label,
-                    "task.hash" => hash_task,
-                    "task.DX" => DX,
-                    "task.N" => "N",
-                ),
+            # For some algorithms we only optimize a certain config and then
+            # reuse the found parameters for other configs.
+            overrides = vcat(
+                # Add to the overrides the config that we did hyperparameter
+                # optimization for.
+                [Override(variant.label, empty([0 => 0]))],
+                # The remaining overrides specified.
+                variant.additional,
             )
 
-            logparam(
-                mlf,
-                mlfrun,
-                Dict([
-                    ("algorithm.param." * string(k), v) for
-                    (k, v) in pairs(params)
-                ]),
-            )
-
-            @info "Transforming training input data …"
-            # Note that we cannot use a pipeline here because we need the scaler
-            # later.
-            scaler = MinMaxScaler()
-            mach_scaler = machine(scaler, X)
-            MLJ.fit!(mach_scaler)
-            X = MLJ.transform(mach_scaler, X)
-
-            @info "Fitting best configuration of $label for task $(string(hash_task; base=16)) …"
-            mach = machine(model, X, y)
-            MLJ.fit!(mach)
-
-            @info "Computing prediction metrics …"
-            y_pred = MLJ.predict_mean(mach, X)
-            y_test_pred = MLJ.predict_mean(mach, X_test)
-
-            mae_train = mae(y, y_pred)
-            mae_test = mae(y_test, y_test_pred)
-            rmse_train = rmse(y, y_pred)
-            rmse_test = rmse(y_test, y_test_pred)
-
-            rs = rules(family, fitted_params(mach))
-            # We'd have to convert stuff to the MLJ table format if we wanted to use
-            # `inverse_transform` directly. I.e. convert `Intervals.Interval`'s
-            # bounds etc. to be feature name–based.
-            xmin = fitted_params(mach_scaler).xmin
-            xmax = fitted_params(mach_scaler).xmax
-            intervals =
-                inverse_transform_interval.(rs.intervals, Ref(xmin), Ref(xmax))
-
-            mktempdir() do path
-                fpath = path * "/rules.jls"
-                serialize(fpath, intervals)
-                return logartifact(mlf, mlfrun, fpath)
-            end
-
-            logmetric.(
-                Ref(mlf),
-                Ref(mlfrun),
-                ["train.mae", "train.rmse", "test.mae", "test.rmse"],
-                [mae_train, rmse_train, mae_test, rmse_test],
-            )
-
-            rep = report(mach)
-            map(keys(rep)) do k
-                log = getfield(rep, k)
-                if hasproperty(rep, :n_iter) &&
-                   log isa AbstractVector &&
-                   length(log) == rep.n_iter
-                    for i in eachindex(log)
-                        logmetric(mlf, mlfrun, string(k), log[i]; step=i)
+            for override in overrides
+                let model = deepcopy(model)
+                    for (k, v) in override.paramoverrides
+                        setproperty!(model, k, v)
                     end
-                elseif hasproperty(rep, :n_iter) &&
-                       log isa AbstractMatrix &&
-                       size(log, 2) == rep.n_iter
-                    for i in eachindex(eachcol(log))
-                        logmetric(mlf, mlfrun, string(k), log[:, i]; step=i)
+
+                    @info "Starting run …"
+                    mlfrun = createrun(
+                        mlf,
+                        mlfexp;
+                        run_name=ifelse(name_run == "", missing, name_run),
+                    )
+                    name_run_final = mlfrun.info.run_name
+                    @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
+
+                    logparam(
+                        mlf,
+                        mlfrun,
+                        Dict(
+                            "algorithm.family" => str_family,
+                            "algorithm.name" => override.label,
+                            "task.hash" => hash_task,
+                            "task.DX" => DX,
+                            "task.N" => "N",
+                        ),
+                    )
+
+                    logparam(
+                        mlf,
+                        mlfrun,
+                        Dict([
+                            ("algorithm.param." * string(k), v) for
+                            (k, v) in pairs(params)
+                        ]),
+                    )
+
+                    @info "Transforming training input data …"
+                    # Note that we cannot use a pipeline here because we need the scaler
+                    # later.
+                    scaler = MinMaxScaler()
+                    mach_scaler = machine(scaler, X)
+                    MLJ.fit!(mach_scaler)
+                    X = MLJ.transform(mach_scaler, X)
+
+                    @info "Fitting best configuration of $(override.label) for " *
+                          "task $(string(hash_task; base=16)) …"
+                    mach = machine(model, X, y)
+                    MLJ.fit!(mach)
+
+                    @info "Computing prediction metrics …"
+                    y_pred = MLJ.predict_mean(mach, X)
+                    y_test_pred = MLJ.predict_mean(mach, X_test)
+
+                    mae_train = mae(y, y_pred)
+                    mae_test = mae(y_test, y_test_pred)
+                    rmse_train = rmse(y, y_pred)
+                    rmse_test = rmse(y_test, y_test_pred)
+
+                    rs = rules(family, fitted_params(mach))
+                    # We'd have to convert stuff to the MLJ table format if we wanted to use
+                    # `inverse_transform` directly. I.e. convert `Intervals.Interval`'s
+                    # bounds etc. to be feature name–based.
+                    xmin = fitted_params(mach_scaler).xmin
+                    xmax = fitted_params(mach_scaler).xmax
+                    intervals =
+                        inverse_transform_interval.(
+                            rs.intervals,
+                            Ref(xmin),
+                            Ref(xmax),
+                        )
+
+                    mktempdir() do path
+                        fpath = path * "/rules.jls"
+                        serialize(fpath, intervals)
+                        return logartifact(mlf, mlfrun, fpath)
                     end
-                elseif log isa Real
-                    logmetric(mlf, mlfrun, string(k), log)
+
+                    logmetric.(
+                        Ref(mlf),
+                        Ref(mlfrun),
+                        ["train.mae", "train.rmse", "test.mae", "test.rmse"],
+                        [mae_train, rmse_train, mae_test, rmse_test],
+                    )
+
+                    rep = report(mach)
+                    map(keys(rep)) do k
+                        log = getfield(rep, k)
+                        if hasproperty(rep, :n_iter) &&
+                           log isa AbstractVector &&
+                           length(log) == rep.n_iter
+                            for i in eachindex(log)
+                                logmetric(
+                                    mlf,
+                                    mlfrun,
+                                    string(k),
+                                    log[i];
+                                    step=i,
+                                )
+                            end
+                        elseif hasproperty(rep, :n_iter) &&
+                               log isa AbstractMatrix &&
+                               size(log, 2) == rep.n_iter
+                            for i in eachindex(eachcol(log))
+                                logmetric(
+                                    mlf,
+                                    mlfrun,
+                                    string(k),
+                                    log[:, i];
+                                    step=i,
+                                )
+                            end
+                        elseif log isa Real
+                            logmetric(mlf, mlfrun, string(k), log)
+                        end
+                    end
+
+                    @info "Finishing run $name_run_final …"
+                    updaterun(mlf, mlfrun, "FINISHED")
+                    @info "Finished run $name_run_final."
                 end
             end
-
-            @info "Finishing run $name_run_final …"
-            updaterun(mlf, mlfrun, "FINISHED")
-            @info "Finished run $name_run_final."
         end
     end
 end

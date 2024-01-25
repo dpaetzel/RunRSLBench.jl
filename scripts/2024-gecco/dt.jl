@@ -62,10 +62,11 @@ function userextras(::DT)
 end
 
 function mkvariant(::Type{DT}, n, nrules_min, nrules_max; testonly=false)
-    return (;
-        label="DT$nrules_min-$nrules_max",
-        family="DT",
-        model=basemodel(DT),
-        mkspace=mkmkspace_dt(nrules_min, nrules_max, n),
+    return Variant(
+        "DT$nrules_min-$nrules_max",
+        "DT",
+        basemodel(DT),
+        mkmkspace_dt(nrules_min, nrules_max, n),
+        [],
     )
 end

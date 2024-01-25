@@ -95,10 +95,11 @@ function userextras(::XCSFRegressor)
 end
 
 function mkvariant(::Type{XCSFRegressor}, n, pop_size; testonly=false)
-    return (;
-        label="XCSF$n",
-        family="XCSFRegressor",
-        model=basemodel(XCSFRegressor, n, pop_size; testonly=testonly),
-        mkspace=mkspace_xcsf,
+    return Variant(
+        "XCSF$pop_size",
+        "XCSFRegressor",
+        basemodel(XCSFRegressor, n, pop_size; testonly=testonly),
+        mkspace_xcsf,
+        [],
     )
 end
