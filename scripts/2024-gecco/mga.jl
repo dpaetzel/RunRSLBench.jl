@@ -7,7 +7,7 @@ function basemodel(
 )
     return GARegressor(;
         # TODO Early stopping would be a nice feature
-        n_iter=ifelse(testonly, 10, 200),
+        n_iter=ifelse(testonly, 10, 1000),
         size_pop=size_pop,
         fiteval=fiteval,
         # TODO dgmodel
@@ -15,6 +15,7 @@ function basemodel(
         x_max=1.0,
         # Optimized.
         # nmatch_min=2,
+        n_iter_earlystop=50,
         init=:inverse,
         init_sample_fname="../2024-gecco-tasks/2024-01-09T16-54-46-439387-kdata/",
         # Ain't nobody got time for safety (this is still pretty safe, just
