@@ -94,11 +94,12 @@ function mkvariant(
             testonly=testonly,
         ),
         mkspace_mga,
-        [
-            Override(
-                "MGA$size_pop-similarity",
-                [:fiteval => :similarity, :dgmodel => dgmodel],
-            ),
-        ],
+        [],
+        # [
+        #     Override(
+        #         "MGA$size_pop-similarity",
+        #         [:fiteval => :similarity, :dgmodel => dgmodel],
+        #     ),
+        # ],
     )
 end
