@@ -111,32 +111,46 @@ end
 # Let's pirate some types. Julia, please forgive me.
 MLJTuning.supports_heuristic(::LatinHypercube, ::UserextraSelection) = true
 
-function tune(model, mkspace, X, y; testonly=false)
+function tune(mlf, mlfrun, model, mkspace, X, y; testonly=false)
     N, DX = nrow(X), ncol(X)
 
     # TODO Refactor model being provided here after pipe
     space = mkspace(model, DX)
 
+    nfolds = 5
+    n_gens_lhc = 30
+    n_models = ifelse(testonly, 2, 100)
+
+    selection_heuristic =
+        ifelse(model isa GARegressor, UserextraSelection(), NaiveSelection())
+
+    logparam(
+        mlf,
+        mlfrun,
+        Dict(
+            "tuning.nfolds" => nfolds,
+            "tuning.n_gens_lhs" => n_gens_lhc,
+            "tuning.selection_heuristic" => string(selection_heuristic),
+            "tuning.n_models" => n_models,
+        ),
+    )
+
     pipe = Pipeline(;
         scaler=MinMaxScaler(),
         model=TunedModel(;
             model=model,
-            resampling=CV(; nfolds=5),
+            resampling=CV(; nfolds=nfolds),
             # TODO Right now TreeParzen does not support nested hyperparameters (see my
             # issue on that).
             # tuning = MLJTreeParzenTuning(),
-            tuning=LatinHypercube(; gens=30),
+            tuning=LatinHypercube(; gens=n_gens_lhc),
             range=space,
             measure=mae,
-            selection_heuristic=ifelse(
-                model isa GARegressor,
-                UserextraSelection(),
-                NaiveSelection(),
-            ),
+            selection_heuristic=selection_heuristic,
             # Number of models to evaluate. Note that without this, LatinHypercube fails
             # with an obscure error message.
             # TODO Increase number of models/make more fair wrt runtime
-            n=ifelse(testonly, 2, 100),
+            n=n_models,
             userextras=ifelse(
                 model isa GARegressor,
                 userextras(model),
@@ -211,8 +225,15 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
             )
 
             @info "Tuning $(variant.label) …"
-            mach_tuned =
-                tune(variant.model, variant.mkspace, X, y; testonly=testonly)
+            mach_tuned = tune(
+                mlf,
+                mlfrun,
+                variant.model,
+                variant.mkspace,
+                X,
+                y;
+                testonly=testonly,
+            )
 
             history = report(mach_tuned).model.history
 
