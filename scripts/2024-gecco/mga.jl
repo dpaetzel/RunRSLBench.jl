@@ -88,7 +88,7 @@ function mkvariant(
         "GARegressor",
         basemodel(
             GARegressor,
-            :posterior,
+            :NegAIC,
             size_pop,
             crossover;
             testonly=testonly,
