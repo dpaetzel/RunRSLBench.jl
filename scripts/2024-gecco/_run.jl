@@ -21,6 +21,23 @@ using Serialization
 using Tables
 DT = @load DecisionTreeRegressor pkg = DecisionTree verbosity = 0
 
+# TODO Consolidate logtuningreport and logreport
+function logtuningreport(mlf, mlfrun, mach)
+    rep = report(mach).model.plotting
+    n_iter = length(rep.measurements)
+
+    rep_ = Dict{String,Any}(
+        rep.parameter_names .=> eachrow(rep.parameter_values'),
+    )
+    for (k, v) in rep_
+        for i in eachindex(v)
+            logmetric(mlf, mlfrun, "tuning.params.$k", v[i]; step=i)
+        end
+    end
+
+    return nothing
+end
+
 """
 Fixed parameter values that we do not optimize over.
 
@@ -86,6 +103,9 @@ end
 """
 Log a report (e.g. as obtained by `report(mach)` for `mach isa Machine`) to
 mlflow.
+
+Note that this only looks at the highest level of the report and does not
+descend into nested `NamedTuple`s or similar.
 """
 function logreport(mlf, mlfrun, rep, prefix)
     map(keys(rep)) do k
@@ -308,7 +328,7 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
                     logmetric(
                         mlf,
                         mlfrun,
-                        "measures",
+                        "tuning.measures",
                         # I don't know why right now but entries in
                         # `measures_per_fold` are wrapped in another array.
                         measures_per_fold[i][1];
@@ -322,7 +342,7 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
                     logmetric(
                         mlf,
                         mlfrun,
-                        "userextras",
+                        "tuning.userextras",
                         userextras_per_fold[i];
                         step=i,
                     )
@@ -343,15 +363,31 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
             rep = report(mach_tuned).model.best_report
             logreport(mlf, mlfrun, rep, "best")
 
+            logtuningreport(mlf, mlfrun, mach_tuned)
+
             # Filter out blacklisted fieldnames.
-            params_model = filter(
+            paramsdict = filter(
                 kv -> kv.first ∉ blacklist(variant.model),
                 Dict(pairs(params(best_model))),
             )
 
-            # Note that for XCSF, we extract and log Julia model params (and not the
-            # underlying Python library's params) for now.
-            logartifact(mlf, mlfrun, "best_params.json", json(params_model))
+            # We log parameters to mlflow directly as well as to a JSON
+            # artifact. This has historical reasons, we first logged only to a
+            # JSON artifact and added the direct logging later.
+            logparam(
+                mlf,
+                mlfrun,
+                Dict([
+                    ("algorithm.param." * string(k), v) for
+                    (k, v) in paramsdict
+                ]),
+            )
+
+            # TODO Would be nicer to log only fixed parameters
+
+            # Note that for XCSF, we extract and log Julia model params (and not
+            # the underlying Python library's params) for now.
+            logartifact(mlf, mlfrun, "best_params.json", json(paramsdict))
 
             @info "Finishing run $name_run_final …"
             updaterun(mlf, mlfrun, "FINISHED")
