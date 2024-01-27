@@ -97,7 +97,7 @@ function mkvariant(
     testonly=false,
 )
     return Variant(
-        "MGA$size_pop-posterior",
+        "MGA$size_pop",
         "GARegressor",
         basemodel(
             GARegressor,
