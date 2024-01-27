@@ -37,11 +37,12 @@ function basemodel(
         # mutate_p_rm=ifelse(crossover, 0.05, 0.4),
         mutate_rate_mut=1.0,
         mutate_rate_std=0.05,
-        # Optimized.
-        recomb_rate=ifelse(crossover, 0.8, 0.0),
+        recomb=ifelse(crossover == :off, :lengthniching, crossover),
+        # Optimized unless crossover==:off.
+        recomb_rate=ifelse(crossover == :off, 0.0, 0.8),
         select=select,
-        # Optimized.
-        # select_width_window=7,
+        # TODO Consider to optimize this
+        select_width_window=7,
         # TODO Consider to select a somewhat informed value instead of
         # ryerkerk2020's
         select_lambda_window=0.004,
@@ -61,15 +62,11 @@ function mkspace_mga(model, DX)
         # ),
         # range(model, :mutate_rate_std; lower=0.001, upper=0.2, scale=:log),
     ]
+    # In basemodel, we set recomb_rate to 0.0 if crossover==:off.
     if model.recomb_rate != 0.0
         push!(space, range(model, :recomb_rate; lower=0.01, upper=1.0))
     end
-    if model.select == :lengthniching
-        push!(
-            space,
-            range(model, :select_width_window; values=collect(7:2:11)),
-        )
-    elseif model.select == :tournament
+    if model.select == :tournament
         push!(
             space,
             range(
@@ -89,6 +86,8 @@ end
 function fixparams!(::Type{GARegressor}, params)
     params[:fiteval] = Symbol(params[:fiteval])
     params[:init] = Symbol(params[:init])
+    params[:recomb] = Symbol(params[:recomb])
+    params[:select] = Symbol(params[:select])
     if params[:init_spread_max] == nothing
         params[:init_spread_max] = Inf
     end
@@ -109,6 +108,7 @@ end
 
 function mkvariant(
     ::Type{GARegressor},
+    postfix,
     size_pop,
     dgmodel;
     select=:lengthniching,
@@ -116,7 +116,7 @@ function mkvariant(
     testonly=false,
 )
     return Variant(
-        "MGA$size_pop",
+        "MGA$size_pop-$postfix",
         "GARegressor",
         basemodel(
             GARegressor,
