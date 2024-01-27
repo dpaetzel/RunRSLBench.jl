@@ -2,6 +2,7 @@ function basemodel(
     ::Type{GARegressor},
     fiteval,
     size_pop,
+    select,
     crossover;
     testonly=false,
 )
@@ -38,17 +39,19 @@ function basemodel(
         mutate_rate_std=0.05,
         # Optimized.
         recomb_rate=ifelse(crossover, 0.8, 0.0),
+        select=select,
         # Optimized.
         # select_width_window=7,
         # TODO Consider to select a somewhat informed value instead of
         # ryerkerk2020's
         select_lambda_window=0.004,
+        # Optimized.
+        # select_size_tournament=4
     )
 end
 
 function mkspace_mga(model, DX)
-    space = [
-        range(model, :select_width_window; values=collect(7:2:11)),
+    space::Vector{ParamRange} = [
         range(model, :mutate_p_add; lower=0.01, upper=1.0),
         range(model, :mutate_p_rm; lower=0.01, upper=1.0),
         # range(
@@ -60,6 +63,21 @@ function mkspace_mga(model, DX)
     ]
     if model.recomb_rate != 0.0
         push!(space, range(model, :recomb_rate; lower=0.01, upper=1.0))
+    end
+    if model.select == :lengthniching
+        push!(
+            space,
+            range(model, :select_width_window; values=collect(7:2:11)),
+        )
+    elseif model.select == :tournament
+        push!(
+            space,
+            range(
+                model,
+                :select_size_tournament;
+                values=collect(1:(div(model.size_pop, 4))),
+            ),
+        )
     end
     return space
 end
@@ -93,6 +111,7 @@ function mkvariant(
     ::Type{GARegressor},
     size_pop,
     dgmodel;
+    select=:lengthniching,
     crossover=true,
     testonly=false,
 )
@@ -103,6 +122,7 @@ function mkvariant(
             GARegressor,
             :NegAIC,
             size_pop,
+            select,
             crossover;
             testonly=testonly,
         ),

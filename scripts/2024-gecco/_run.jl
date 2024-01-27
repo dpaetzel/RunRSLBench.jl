@@ -8,6 +8,7 @@ using TOML
 using Missings
 using MLFlowClient
 using MLJ
+using MLJBase
 using MLJTuning
 using NPZ
 using RSLModels.Intervals
@@ -117,15 +118,38 @@ end
 
 function listvariants(N, dgmodel; testonly=false)
     return [
-        mkvariant(XCSFRegressor, N, 200; testonly=testonly),
         mkvariant(
             GARegressor,
             32,
             dgmodel;
+            select=:lengthniching,
             crossover=false,
             testonly=testonly,
         ),
-        mkvariant(GARegressor, 32, dgmodel; crossover=true, testonly=testonly),
+        mkvariant(
+            GARegressor,
+            32,
+            dgmodel;
+            select=:tournament,
+            crossover=false,
+            testonly=testonly,
+        ),
+        mkvariant(
+            GARegressor,
+            32,
+            dgmodel;
+            select=:lengthniching,
+            crossover=true,
+            testonly=testonly,
+        ),
+        mkvariant(
+            GARegressor,
+            32,
+            dgmodel;
+            select=:tournament,
+            crossover=true,
+            testonly=testonly,
+        ),
         mkvariant(DT, N, 1, 70; testonly=testonly),
         mkvariant(XCSFRegressor, N, 200; testonly=testonly),
         mkvariant(XCSFRegressor, N, 500; testonly=testonly),
