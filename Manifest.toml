@@ -2,7 +2,7 @@
 
 julia_version = "1.9.3"
 manifest_format = "2.0"
-project_hash = "9cdfc3edd0d9c3c9c25331f600b2a6a7c0a3040a"
+project_hash = "f1b8e3675fca4559d87b7bb99ad07e1b84fd232a"
 
 [[deps.ARFFFiles]]
 deps = ["CategoricalArrays", "Dates", "Parsers", "Tables"]
@@ -1885,7 +1885,7 @@ deps = ["InteractiveUtils", "Markdown", "Sockets", "Unicode"]
 uuid = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 
 [[deps.RSLModels]]
-deps = ["Accessors", "AlgebraOfGraphics", "AutoHashEquals", "Base64", "BenchmarkTools", "CSV", "CairoMakie", "ColorSchemes", "Combinatorics", "Comonicon", "Cthulhu", "DataFrames", "Dates", "Debugger", "Distributed", "Distributions", "Infiltrator", "JET", "JSON", "JuliaFormatter", "KittyTerminalImages", "LaTeXStrings", "Latexify", "LibGit2", "LinearAlgebra", "MLFlowClient", "MLJ", "MLJClusteringInterface", "MLJLinearModels", "MLJModelInterface", "MLUtils", "Makie", "MathTeXEngine", "Memoize", "Missings", "Mmap", "NPZ", "NearestNeighborModels", "OhMyREPL", "OrderedCollections", "PProf", "ProgressMeter", "PyCall", "PyPlot", "Random", "Revise", "SHA", "ScientificTypes", "Serialization", "Statistics", "StatsBase", "TOML", "Tables"]
+deps = ["Accessors", "AlgebraOfGraphics", "AutoHashEquals", "Base64", "BenchmarkTools", "CSV", "CairoMakie", "ColorSchemes", "Combinatorics", "Comonicon", "Cthulhu", "DataFrames", "Dates", "Debugger", "Distributed", "Distributions", "Infiltrator", "JET", "JSON", "JuliaFormatter", "KittyTerminalImages", "LaTeXStrings", "Latexify", "LibGit2", "LinearAlgebra", "MLFlowClient", "MLJ", "MLJClusteringInterface", "MLJLinearModels", "MLJModelInterface", "MLUtils", "Makie", "MathTeXEngine", "Memoize", "Missings", "Mmap", "NPZ", "NearestNeighborModels", "OhMyREPL", "Optim", "OrderedCollections", "PProf", "ProgressMeter", "PyCall", "PyPlot", "Random", "Revise", "SHA", "ScientificTypes", "Serialization", "Statistics", "StatsBase", "TOML", "Tables"]
 path = "../RSLModels.jl"
 uuid = "b1ce8e41-73ae-4235-ac19-90cce97a943a"
 version = "1.0.0-DEV"
