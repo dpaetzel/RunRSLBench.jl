@@ -82,8 +82,42 @@ function getmlf()
     return MLFlow(mlflow_url; headers=headers)
 end
 
+"""
+Log a report (e.g. as obtained by `report(mach)` for `mach isa Machine`) to
+mlflow.
+"""
+function logreport(mlf, mlfrun, rep, prefix)
+    map(keys(rep)) do k
+        log = getfield(rep, k)
+        name_metric = ifelse(prefix == "", string(k), "$prefix.$(string(k))")
+        # If a vector with as many entries as there are iterations (assumes
+        # `n_iter` is the iteration count), log the vector iteration by
+        # iteration.
+        if hasproperty(rep, :n_iter) &&
+           log isa AbstractVector &&
+           length(log) == rep.n_iter
+            for i in eachindex(log)
+                logmetric(mlf, mlfrun, name_metric, log[i]; step=i)
+            end
+            # Same as vector but for a matrix (i.e. multiple values per iteration).
+        elseif hasproperty(rep, :n_iter) &&
+               log isa AbstractMatrix &&
+               size(log, 2) == rep.n_iter
+            for i in eachindex(eachcol(log))
+                logmetric(mlf, mlfrun, name_metric, log[:, i]; step=i)
+            end
+        elseif log isa Real
+            logmetric(mlf, mlfrun, name_metric, log)
+        else
+            @warn "Not logging report field $k, type $(typeof(log)) not " *
+                  "supported by mlflow"
+        end
+    end
+end
+
 function listvariants(N, dgmodel; testonly=false)
     return [
+        mkvariant(XCSFRegressor, N, 200; testonly=testonly),
         mkvariant(
             GARegressor,
             32,
@@ -281,6 +315,9 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
                 index_best = argmax(mean.(userextras_per_fold))
                 @assert history[index_best].model == best_model
             end
+
+            rep = report(mach_tuned).model.best_report
+            logreport(mlf, mlfrun, rep, "best")
 
             # Filter out blacklisted fieldnames.
             params_model = filter(
@@ -487,36 +524,7 @@ function _runbest(
                     )
 
                     rep = report(mach)
-                    map(keys(rep)) do k
-                        log = getfield(rep, k)
-                        if hasproperty(rep, :n_iter) &&
-                           log isa AbstractVector &&
-                           length(log) == rep.n_iter
-                            for i in eachindex(log)
-                                logmetric(
-                                    mlf,
-                                    mlfrun,
-                                    string(k),
-                                    log[i];
-                                    step=i,
-                                )
-                            end
-                        elseif hasproperty(rep, :n_iter) &&
-                               log isa AbstractMatrix &&
-                               size(log, 2) == rep.n_iter
-                            for i in eachindex(eachcol(log))
-                                logmetric(
-                                    mlf,
-                                    mlfrun,
-                                    string(k),
-                                    log[:, i];
-                                    step=i,
-                                )
-                            end
-                        elseif log isa Real
-                            logmetric(mlf, mlfrun, string(k), log)
-                        end
-                    end
+                    logreport(mlf, mlfrun, rep, "")
 
                     @info "Finishing run $name_run_final …"
                     updaterun(mlf, mlfrun, "FINISHED")

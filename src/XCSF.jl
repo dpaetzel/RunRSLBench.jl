@@ -177,7 +177,8 @@ function MMI.fit(model::XCSFRegressor, verbosity, X, y)
 
     fitresult = model_
     cache = nothing
-    report = (; metrics=model_.get_metrics())
+    report = NamedTuple([Symbol(k) => v for (k, v) in model_.get_metrics()])
+    report = merge(report, (; n_iter=report.trials[end]))
 
     return fitresult, cache, report
 end
