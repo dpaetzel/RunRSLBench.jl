@@ -91,6 +91,7 @@ function listvariants(N, dgmodel; testonly=false)
             crossover=false,
             testonly=testonly,
         ),
+        mkvariant(GARegressor, 32, dgmodel; crossover=true, testonly=testonly),
         mkvariant(DT, N, 1, 70; testonly=testonly),
         mkvariant(XCSFRegressor, N, 200; testonly=testonly),
         mkvariant(XCSFRegressor, N, 500; testonly=testonly),
