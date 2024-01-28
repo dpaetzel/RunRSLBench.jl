@@ -263,9 +263,22 @@ function readdata(fname)
     return (X, y, hash_task, X_test, y_test)
 end
 
-function _optparams(fnames...; testonly::Bool=false, name_run::String="")
+function _optparams(
+    label_variant,
+    fnames...;
+    testonly::Bool=false,
+    name_run::String="",
+)
     # TODO Random seeding
     # TODO Random seeding for XCSF
+
+    # Since we only want to get the names, we use 0 and nothing here.
+    # TODO Clean up this variants business, properly parallelize
+    variants = listvariants(0, nothing; testonly=testonly)
+    println("Available variants:")
+    for v in variants
+        println(v.label)
+    end
 
     for (i, fname) in enumerate(fnames)
         @info "Starting hyperparameter optimization for learning task $fname."
@@ -284,118 +297,123 @@ function _optparams(fnames...; testonly::Bool=false, name_run::String="")
         # Since we don't access dgmodel for `_optparams`, we can supply
         # `nothing` in its stead. (Not nice, but why access the disk if there's
         # no need …)
-        for variant in listvariants(N, nothing; testonly=testonly)
-            @info "Starting run …"
-            mlfrun = createrun(
-                mlf,
-                mlfexp;
-                run_name=ifelse(name_run == "", missing, name_run),
-            )
-            name_run_final = mlfrun.info.run_name
-            @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
-
-            logparam(
-                mlf,
-                mlfrun,
-                Dict(
-                    "algorithm.family" => string(variant.family),
-                    "algorithm.name" => variant.label,
-                    "task.hash" => hash_task,
-                    "task.DX" => DX,
-                    "task.N" => "N",
-                ),
-            )
-
-            @info "Tuning $(variant.label) …"
-            mach_tuned = tune(
-                mlf,
-                mlfrun,
-                variant.model,
-                variant.mkspace,
-                X,
-                y;
-                testonly=testonly,
-            )
-
-            history = report(mach_tuned).model.history
-
-            measures_per_fold = getproperty.(history, :per_fold)
-
-            # Since `TunedModel` only supports measures that only depend on `y`
-            # and `ypred`, we log GARegressor's fitness using the userextras
-            # mechanism.
-            userextras_per_fold = getproperty.(history, :userextras)
-
-            for i in eachindex(measures_per_fold)
-                if i != nothing
-                    logmetric(
-                        mlf,
-                        mlfrun,
-                        "tuning.measures",
-                        # I don't know why right now but entries in
-                        # `measures_per_fold` are wrapped in another array.
-                        measures_per_fold[i][1];
-                        step=i,
-                    )
-                end
-            end
-
-            for i in eachindex(userextras_per_fold)
-                if userextras_per_fold[i] != nothing
-                    logmetric(
-                        mlf,
-                        mlfrun,
-                        "tuning.userextras",
-                        userextras_per_fold[i];
-                        step=i,
-                    )
-                end
-            end
-
-            best_model = fitted_params(mach_tuned).model.best_model
-
-            # Cheap sanity check for whether we extracted the correct model
-            # using the `userextras` interface.
-            if variant.model isa GARegressor
-                # Determine best_model for `GARegressor` based on `userextras`
-                # (where we log the fitness to).
-                index_best = argmax(mean.(userextras_per_fold))
-                @assert history[index_best].model == best_model
-            end
-
-            rep = report(mach_tuned).model.best_report
-            logreport(mlf, mlfrun, rep, "best")
-
-            logtuningreport(mlf, mlfrun, mach_tuned)
-
-            # Filter out blacklisted fieldnames.
-            paramsdict = filter(
-                kv -> kv.first ∉ blacklist(variant.model),
-                Dict(pairs(params(best_model))),
-            )
-
-            # We log parameters to mlflow directly as well as to a JSON
-            # artifact. This has historical reasons, we first logged only to a
-            # JSON artifact and added the direct logging later.
-            logparam(
-                mlf,
-                mlfrun,
-                Dict([
-                    ("algorithm.param." * string(k), v) for
-                    (k, v) in paramsdict
-                ]),
-            )
-
-            # TODO Would be nicer to log only fixed parameters
-
-            # Note that for XCSF, we extract and log Julia model params (and not
-            # the underlying Python library's params) for now.
-            logartifact(mlf, mlfrun, "best_params.json", json(paramsdict))
-
-            @info "Finishing run $name_run_final …"
-            updaterun(mlf, mlfrun, "FINISHED")
-            @info "Finished run $name_run_final."
+        # for variant in listvariants(N, nothing; testonly=testonly)
+        variants = listvariants(N, nothing; testonly=testonly)
+        variant = filter(v -> v.label == label_variant, variants)
+        if length(variant) != 1
+            error("Unknown variant, check the source code")
         end
+        variant = variant[1]
+
+        @info "Starting run …"
+        mlfrun = createrun(
+            mlf,
+            mlfexp;
+            run_name=ifelse(name_run == "", missing, name_run),
+        )
+        name_run_final = mlfrun.info.run_name
+        @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
+
+        logparam(
+            mlf,
+            mlfrun,
+            Dict(
+                "algorithm.family" => string(variant.family),
+                "algorithm.name" => variant.label,
+                "task.hash" => hash_task,
+                "task.DX" => DX,
+                "task.N" => "N",
+            ),
+        )
+
+        @info "Tuning $(variant.label) …"
+        mach_tuned = tune(
+            mlf,
+            mlfrun,
+            variant.model,
+            variant.mkspace,
+            X,
+            y;
+            testonly=testonly,
+        )
+
+        history = report(mach_tuned).model.history
+
+        measures_per_fold = getproperty.(history, :per_fold)
+
+        # Since `TunedModel` only supports measures that only depend on `y`
+        # and `ypred`, we log GARegressor's fitness using the userextras
+        # mechanism.
+        userextras_per_fold = getproperty.(history, :userextras)
+
+        for i in eachindex(measures_per_fold)
+            if i != nothing
+                logmetric(
+                    mlf,
+                    mlfrun,
+                    "tuning.measures",
+                    # I don't know why right now but entries in
+                    # `measures_per_fold` are wrapped in another array.
+                    measures_per_fold[i][1];
+                    step=i,
+                )
+            end
+        end
+
+        for i in eachindex(userextras_per_fold)
+            if userextras_per_fold[i] != nothing
+                logmetric(
+                    mlf,
+                    mlfrun,
+                    "tuning.userextras",
+                    userextras_per_fold[i];
+                    step=i,
+                )
+            end
+        end
+
+        best_model = fitted_params(mach_tuned).model.best_model
+
+        # Cheap sanity check for whether we extracted the correct model
+        # using the `userextras` interface.
+        if variant.model isa GARegressor
+            # Determine best_model for `GARegressor` based on `userextras`
+            # (where we log the fitness to).
+            index_best = argmax(mean.(userextras_per_fold))
+            @assert history[index_best].model == best_model
+        end
+
+        rep = report(mach_tuned).model.best_report
+        logreport(mlf, mlfrun, rep, "best")
+
+        logtuningreport(mlf, mlfrun, mach_tuned)
+
+        # Filter out blacklisted fieldnames.
+        paramsdict = filter(
+            kv -> kv.first ∉ blacklist(variant.model),
+            Dict(pairs(params(best_model))),
+        )
+
+        # We log parameters to mlflow directly as well as to a JSON
+        # artifact. This has historical reasons, we first logged only to a
+        # JSON artifact and added the direct logging later.
+        logparam(
+            mlf,
+            mlfrun,
+            Dict([
+                ("algorithm.param." * string(k), v) for (k, v) in paramsdict
+            ]),
+        )
+
+        # TODO Would be nicer to log only fixed parameters
+
+        # Note that for XCSF, we extract and log Julia model params (and not
+        # the underlying Python library's params) for now.
+        logartifact(mlf, mlfrun, "best_params.json", json(paramsdict))
+
+        @info "Finishing run $name_run_final …"
+        updaterun(mlf, mlfrun, "FINISHED")
+        @info "Finished run $name_run_final."
     end
 end
 

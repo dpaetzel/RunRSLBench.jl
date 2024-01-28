@@ -8,6 +8,7 @@ tasks, logging results to mlflow.
 
 # Args
 
+- `label_variant`: TODO Doc
 - `fnames`: Name of NPZ files that each containing training data for one
   learning task.
 
@@ -21,8 +22,18 @@ tasks, logging results to mlflow.
 - `--testonly`: Whether to perform very short runs that do not attempt to be
   competitive (useful for testing the pipeline).
 """
-@cast function optparams(fnames...; testonly::Bool=false, name_run::String="")
-    return _optparams(fnames...; testonly=testonly, name_run=name_run)
+@cast function optparams(
+    label_variant,
+    fnames...;
+    testonly::Bool=false,
+    name_run::String="",
+)
+    return _optparams(
+        label_variant,
+        fnames...;
+        testonly=testonly,
+        name_run=name_run,
+    )
 end
 
 """
