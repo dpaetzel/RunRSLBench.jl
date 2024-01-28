@@ -140,29 +140,20 @@ function listvariants(N, dgmodel; testonly=false)
     return [
         mkvariant(
             GARegressor,
-            "lnselect-nox",
-            32,
-            dgmodel;
-            select=:lengthniching,
-            crossover=:off,
-            testonly=testonly,
-        ),
-        mkvariant(
-            GARegressor,
-            "trnmtselect-nox",
-            32,
-            dgmodel;
-            select=:tournament,
-            crossover=:off,
-            testonly=testonly,
-        ),
-        mkvariant(
-            GARegressor,
             "lnselect-spatialx",
             32,
             dgmodel;
             select=:lengthniching,
             crossover=:spatial,
+            testonly=testonly,
+        ),
+        mkvariant(
+            GARegressor,
+            "lnselect-nox",
+            32,
+            dgmodel;
+            select=:lengthniching,
+            crossover=:off,
             testonly=testonly,
         ),
         mkvariant(
@@ -183,17 +174,7 @@ function listvariants(N, dgmodel; testonly=false)
             crossover=:cutsplice,
             testonly=testonly,
         ),
-        mkvariant(
-            GARegressor,
-            "trnmtselect-cutsplicex",
-            32,
-            dgmodel;
-            select=:tournament,
-            crossover=:cutsplice,
-            testonly=testonly,
-        ),
         mkvariant(DT, N, 1, 70; testonly=testonly),
-        mkvariant(XCSFRegressor, N, 200; testonly=testonly),
         mkvariant(XCSFRegressor, N, 500; testonly=testonly),
         mkvariant(XCSFRegressor, N, 1000; testonly=testonly),
     ]
