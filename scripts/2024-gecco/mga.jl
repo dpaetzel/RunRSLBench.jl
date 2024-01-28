@@ -7,7 +7,6 @@ function basemodel(
     testonly=false,
 )
     return GARegressor(;
-        # TODO Early stopping would be a nice feature
         n_iter=ifelse(testonly, 10, 1000),
         size_pop=size_pop,
         fiteval=fiteval,
@@ -15,7 +14,7 @@ function basemodel(
         x_min=0.0,
         x_max=1.0,
         nmatch_min=2,
-        n_iter_earlystop=100,
+        n_iter_earlystop=500,
         init=:inverse,
         init_sample_fname="../2024-gecco-tasks/2024-01-09T16-54-46-439387-kdata/",
         # Ain't nobody got time for safety (this is still pretty safe, just
