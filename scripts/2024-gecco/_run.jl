@@ -1,6 +1,7 @@
 using Infiltrator
 
 using Base64
+using CSV
 using Dates
 using DataFrames
 using JSON
@@ -120,15 +121,29 @@ function logreport(mlf, mlfrun, rep, prefix)
         if hasproperty(rep, :n_iter) &&
            log isa AbstractVector &&
            length(log) == rep.n_iter
-            for i in eachindex(log)
-                logmetric(mlf, mlfrun, name_metric, log[i]; step=i)
+            # See comment below regarding file-based backend.
+            # for i in eachindex(log)
+            #     logmetric(mlf, mlfrun, name_metric, log[i]; step=i)
+            # end
+            mktempdir() do path
+                fpath = path * "/$(string(k)).csv"
+                CSV.write(fpath, Tables.table(log))
+                return logartifact(mlf, mlfrun, fpath)
             end
             # Same as vector but for a matrix (i.e. multiple values per iteration).
         elseif hasproperty(rep, :n_iter) &&
                log isa AbstractMatrix &&
                size(log, 2) == rep.n_iter
-            for i in eachindex(eachcol(log))
-                logmetric(mlf, mlfrun, name_metric, log[:, i]; step=i)
+            # While this is nice and all, with the file-based backend (yeah, I
+            # know, “don't use that duh”), this is a huge bottleneck. Instead,
+            # log it to a file and put that into the artifact store.
+            # for i in eachindex(eachcol(log))
+            #     logmetric(mlf, mlfrun, name_metric, log[:, i]; step=i)
+            # end
+            mktempdir() do path
+                fpath = path * "/$(string(k)).csv"
+                CSV.write(fpath, Tables.table(log'))
+                return logartifact(mlf, mlfrun, fpath)
             end
         elseif log isa Real
             logmetric(mlf, mlfrun, name_metric, log)
