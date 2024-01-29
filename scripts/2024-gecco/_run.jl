@@ -533,6 +533,8 @@ function _runbest(
         model = variant.type_model(; paramsdict...)
         model.rng = seed
 
+        @info "Algorithm seed is $seed."
+
         # For some algorithms we only optimize a certain config and then
         # reuse the found parameters for other configs.
         overrides = vcat(
@@ -565,6 +567,7 @@ function _runbest(
                     Dict(
                         "algorithm.family" => variant.label_family,
                         "algorithm.name" => override.label,
+                        "algorithm.seed" => seed,
                         "task.hash" => hash_task,
                         "task.DX" => DX,
                         "task.N" => "N",
