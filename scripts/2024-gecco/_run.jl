@@ -72,7 +72,7 @@ struct Variant
     # optimization).
     model
     # Ranges for hyperparameter optimization.
-    mkspace::Function
+    mkspace::Union{Function,Nothing}
     # Given optimized hyperparameters, which other configurations to evaluate
     # using those.
     additional::Vector{Override}
@@ -136,13 +136,12 @@ function logreport(mlf, mlfrun, rep, prefix)
     end
 end
 
-function listvariants(N, dgmodel; testonly=false)
+function listvariants(N; testonly=false)
     return [
         mkvariant(
             GARegressor,
             "lnselect-spatialx",
-            32,
-            dgmodel;
+            32;
             select=:lengthniching,
             crossover=:spatial,
             testonly=testonly,
@@ -150,8 +149,7 @@ function listvariants(N, dgmodel; testonly=false)
         mkvariant(
             GARegressor,
             "lnselect-nox",
-            32,
-            dgmodel;
+            32;
             select=:lengthniching,
             crossover=:off,
             testonly=testonly,
@@ -159,8 +157,7 @@ function listvariants(N, dgmodel; testonly=false)
         mkvariant(
             GARegressor,
             "trnmtselect-spatialx",
-            32,
-            dgmodel;
+            32;
             select=:tournament,
             crossover=:spatial,
             testonly=testonly,
@@ -168,8 +165,7 @@ function listvariants(N, dgmodel; testonly=false)
         mkvariant(
             GARegressor,
             "lnselect-cutsplicex",
-            32,
-            dgmodel;
+            32;
             select=:lengthniching,
             crossover=:cutsplice,
             testonly=testonly,
@@ -272,9 +268,9 @@ function _optparams(
     # TODO Random seeding
     # TODO Random seeding for XCSF
 
-    # Since we only want to get the names, we use 0 and nothing here.
+    # Since we only want to get the names, we use 0 here.
     # TODO Clean up this variants business, properly parallelize
-    variants = listvariants(0, nothing; testonly=testonly)
+    variants = listvariants(0; testonly=testonly)
     println("Available variants:")
     for v in variants
         println(v.label)
@@ -294,16 +290,17 @@ function _optparams(
         @info "Setting experiment name to $name_exp …"
         mlfexp = getorcreateexperiment(mlf, name_exp)
 
-        # Since we don't access dgmodel for `_optparams`, we can supply
-        # `nothing` in its stead. (Not nice, but why access the disk if there's
-        # no need …)
-        # for variant in listvariants(N, nothing; testonly=testonly)
-        variants = listvariants(N, nothing; testonly=testonly)
+        variants = listvariants(N; testonly=testonly)
         variant = filter(v -> v.label == label_variant, variants)
         if length(variant) != 1
             error("Unknown variant, check the source code")
         end
         variant = variant[1]
+
+        if variant.mkspace == nothing
+            @info "Tuning for $(variant.label) is disabled. Stopping."
+            return
+        end
 
         @info "Starting run …"
         mlfrun = createrun(
@@ -486,8 +483,9 @@ function _runbest(
         X, y, hash_task, X_test, y_test = readdata(fname)
         N, DX = nrow(X), ncol(X)
 
-        @info "Deserializing data generating model …"
-        dgmodel = deserialize(replace(fname, ".data.npz" => ".task.jls"))
+        # Not used right now.
+        # @info "Deserializing data generating model …"
+        # dgmodel = deserialize(replace(fname, ".data.npz" => ".task.jls"))
 
         mlf = getmlf()
         @info "Logging to mlflow tracking URI $(mlf.baseuri)."
@@ -496,7 +494,7 @@ function _runbest(
         @info "Setting experiment name to $name_exp …"
         mlfexp = getorcreateexperiment(mlf, name_exp)
 
-        for variant in listvariants(N, dgmodel.model; testonly=testonly)
+        for variant in listvariants(N; testonly=testonly)
             str_family = variant.family
 
             family, paramsdict = getoptparams(mlf, variant.label, hash_task)

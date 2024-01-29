@@ -10,7 +10,7 @@ function basemodel(
         n_iter=ifelse(testonly, 10, 1000),
         size_pop=size_pop,
         fiteval=fiteval,
-        # TODO dgmodel
+        # dgmodel
         x_min=0.0,
         x_max=1.0,
         nmatch_min=2,
@@ -30,14 +30,13 @@ function basemodel(
         # init_spread_max=Inf,
         # init_rate_coverage_min=0.9,
         # If we don't use crossover, we want more add/rm mutation.
-        # Optimized.
-        # mutate_p_add=ifelse(crossover, 0.05, 0.4),
-        # Optimized.
-        # mutate_p_rm=ifelse(crossover, 0.05, 0.4),
+        mutate_p_add=ifelse(crossover == :off, 0.4, 0.05),
+        mutate_p_rm=ifelse(crossover == :off, 0.4, 0.05),
         mutate_rate_mut=1.0,
         mutate_rate_std=0.05,
-        recomb=ifelse(crossover == :off, :lengthniching, crossover),
-        # Optimized unless crossover==:off.
+        # If crossover is :off, set it to spatial but then set crossover
+        # probability to 0.
+        recomb=ifelse(crossover == :off, :spatial, crossover),
         recomb_rate=ifelse(crossover == :off, 0.0, 0.8),
         select=select,
         # TODO Consider to optimize this
@@ -45,8 +44,7 @@ function basemodel(
         # TODO Consider to select a somewhat informed value instead of
         # ryerkerk2020's
         select_lambda_window=0.004,
-        # Optimized.
-        # select_size_tournament=4
+        select_size_tournament=4,
     )
 end
 
@@ -108,8 +106,7 @@ end
 function mkvariant(
     ::Type{GARegressor},
     postfix,
-    size_pop,
-    dgmodel;
+    size_pop;
     select=:lengthniching,
     crossover=true,
     testonly=false,
@@ -125,7 +122,7 @@ function mkvariant(
             crossover;
             testonly=testonly,
         ),
-        mkspace_mga,
+        nothing,
         [],
     )
 end
