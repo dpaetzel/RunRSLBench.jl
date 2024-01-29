@@ -43,7 +43,7 @@ Fixed parameter values that we do not optimize over.
 
 `n` is the number of training data points available.
 """
-function basemodel end
+function baseparams end
 
 """
 A configuration to evaluate specified as a label for that configuration and a
@@ -63,14 +63,17 @@ well (i.e. their hyperparameters are not optimized but the same hyperparameters
 as the ones of the “main” configuration are used safe for some being overwritten
 (see `Override`)).
 """
-struct Variant
+@kwdef struct Variant
     # Label to use for this variant.
     label::String
     # This variant's algorithm family.
-    family::String
-    # Base model to use (i.e. the fixed hyperparameters during hyperparameter
+    label_family::String
+    # The variant's type. Since this may be less legible, `label_family` is
+    # provided for custom shortened string representations.
+    type_model::Type
+    # Base params to use (i.e. the fixed hyperparameters during hyperparameter
     # optimization).
-    model
+    params::Dict
     # Ranges for hyperparameter optimization.
     mkspace::Union{Function,Nothing}
     # Given optimized hyperparameters, which other configurations to evaluate
@@ -189,10 +192,11 @@ end
 # Let's pirate some types. Julia, please forgive me.
 MLJTuning.supports_heuristic(::LatinHypercube, ::UserextraSelection) = true
 
-function tune(mlf, mlfrun, model, mkspace, X, y; testonly=false)
+function tune(mlf, mlfrun, type_model, params, mkspace, X, y; testonly=false)
     N, DX = nrow(X), ncol(X)
 
-    # TODO Refactor model being provided here after pipe
+    model = type_model(; params...)
+
     space = mkspace(model, DX)
 
     nfolds = 5
@@ -259,6 +263,25 @@ function readdata(fname)
     return (X, y, hash_task, X_test, y_test)
 end
 
+function getvariant(label_variant, N; testonly=false)
+    variants = listvariants(N; testonly=testonly)
+    variant = filter(v -> v.label == label_variant, variants)
+    if length(variant) != 1
+        error("Unknown or ambiguous variant, check the source code")
+    end
+    return variant[1]
+end
+
+function printvariants(; testonly=false)
+    # Since we only want to get the names, we use 0 here.
+    # TODO Clean up this variants business, properly parallelize
+    variants = listvariants(0; testonly=testonly)
+    println("Available variants:")
+    for v in variants
+        println(v.label)
+    end
+end
+
 function _optparams(
     label_variant,
     fnames...;
@@ -268,13 +291,7 @@ function _optparams(
     # TODO Random seeding
     # TODO Random seeding for XCSF
 
-    # Since we only want to get the names, we use 0 here.
-    # TODO Clean up this variants business, properly parallelize
-    variants = listvariants(0; testonly=testonly)
-    println("Available variants:")
-    for v in variants
-        println(v.label)
-    end
+    printvariants(; testonly=testonly)
 
     for (i, fname) in enumerate(fnames)
         @info "Starting hyperparameter optimization for learning task $fname."
@@ -290,12 +307,7 @@ function _optparams(
         @info "Setting experiment name to $name_exp …"
         mlfexp = getorcreateexperiment(mlf, name_exp)
 
-        variants = listvariants(N; testonly=testonly)
-        variant = filter(v -> v.label == label_variant, variants)
-        if length(variant) != 1
-            error("Unknown variant, check the source code")
-        end
-        variant = variant[1]
+        variant = getvariant(label_variant, N; testonly=testonly)
 
         if variant.mkspace == nothing
             @info "Tuning for $(variant.label) is disabled. Stopping."
@@ -315,7 +327,7 @@ function _optparams(
             mlf,
             mlfrun,
             Dict(
-                "algorithm.family" => string(variant.family),
+                "algorithm.family" => string(variant.label_family),
                 "algorithm.name" => variant.label,
                 "task.hash" => hash_task,
                 "task.DX" => DX,
@@ -323,11 +335,22 @@ function _optparams(
             ),
         )
 
+        # TODO Use blacklist on variant.params if necessary
+        logparam(
+            mlf,
+            mlfrun,
+            Dict([
+                ("algorithm.param.fixed." * string(k), v) for
+                (k, v) in variant.params
+            ]),
+        )
+
         @info "Tuning $(variant.label) …"
         mach_tuned = tune(
             mlf,
             mlfrun,
-            variant.model,
+            variant.type_model,
+            variant.params,
             variant.mkspace,
             X,
             y;
@@ -373,7 +396,7 @@ function _optparams(
 
         # Cheap sanity check for whether we extracted the correct model
         # using the `userextras` interface.
-        if variant.model isa GARegressor
+        if variant.params isa GARegressor
             # Determine best_model for `GARegressor` based on `userextras`
             # (where we log the fitness to).
             index_best = argmax(mean.(userextras_per_fold))
@@ -387,22 +410,21 @@ function _optparams(
 
         # Filter out blacklisted fieldnames.
         paramsdict = filter(
-            kv -> kv.first ∉ blacklist(variant.model),
+            kv -> kv.first ∉ blacklist(variant.type_model),
             Dict(pairs(params(best_model))),
         )
 
-        # We log parameters to mlflow directly as well as to a JSON
-        # artifact. This has historical reasons, we first logged only to a
+        # We log optimized hyperparameters to mlflow directly as well as to a
+        # JSON artifact. This has historical reasons, we first logged only to a
         # JSON artifact and added the direct logging later.
         logparam(
             mlf,
             mlfrun,
             Dict([
-                ("algorithm.param." * string(k), v) for (k, v) in paramsdict
+                ("algorithm.param.best." * string(k), v) for
+                (k, v) in paramsdict
             ]),
         )
-
-        # TODO Would be nicer to log only fixed parameters
 
         # Note that for XCSF, we extract and log Julia model params (and not
         # the underlying Python library's params) for now.
@@ -462,21 +484,22 @@ function getoptparams(mlf, label, hash_task)
     end
 
     row = sort(df, "end_time")[end, :]
-    family = getfield(Main, Symbol(row."params.algorithm.family"))
 
     fname_params = row.artifact_uri * "/best_params.json"
     paramsdict = JSON.parsefile(fname_params; dicttype=Dict{Symbol,Any})
-    fixparams!(family, paramsdict)
 
-    return family, paramsdict
+    return paramsdict
 end
 
 function _runbest(
+    label_variant,
     fnames...;
     seed::Int=0,
     testonly::Bool=false,
     name_run::String="",
 )
+    printvariants(; testonly=testonly)
+
     for (i, fname) in enumerate(fnames)
         @info "Starting best-parametrization runs for learning task $fname."
         @info "This is task $i of $(length(fnames))"
@@ -494,121 +517,129 @@ function _runbest(
         @info "Setting experiment name to $name_exp …"
         mlfexp = getorcreateexperiment(mlf, name_exp)
 
-        for variant in listvariants(N; testonly=testonly)
-            str_family = variant.family
+        variant = getvariant(label_variant, N; testonly=testonly)
 
-            family, paramsdict = getoptparams(mlf, variant.label, hash_task)
-            model = family(; paramsdict...)
-            model.rng = seed
+        paramsdict = if variant.mkspace == nothing
+            @info "Hyperparameter tuning is disabled for this algorithm. " *
+                  "Not trying to load optimized hyperparameters."
+            variant.params
+        else
+            @info "This algorithm was tuned, trying to load " *
+                  "optimized hyperparameters …"
+            paramsdict = getoptparams(mlf, variant.label, hash_task)
+            fixparams!(variant.type_model, paramsdict)
+            paramsdict
+        end
+        model = variant.type_model(; paramsdict...)
+        model.rng = seed
 
-            # For some algorithms we only optimize a certain config and then
-            # reuse the found parameters for other configs.
-            overrides = vcat(
-                # Add to the overrides the config that we did hyperparameter
-                # optimization for.
-                [Override(variant.label, empty([0 => 0]))],
-                # The remaining overrides specified.
-                variant.additional,
-            )
+        # For some algorithms we only optimize a certain config and then
+        # reuse the found parameters for other configs.
+        overrides = vcat(
+            # Add to the overrides the config that we did hyperparameter
+            # optimization for.
+            [Override(variant.label, empty([0 => 0]))],
+            # The remaining overrides specified.
+            variant.additional,
+        )
 
-            for override in overrides
-                let model = deepcopy(model)
-                    for (k, v) in override.paramoverrides
-                        setproperty!(model, k, v)
-                    end
-
-                    @info "Starting run …"
-                    mlfrun = createrun(
-                        mlf,
-                        mlfexp;
-                        run_name=ifelse(name_run == "", missing, name_run),
-                    )
-                    name_run_final = mlfrun.info.run_name
-                    @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
-
-                    @info "Logging hyperparameters to mlflow …"
-                    logparam(
-                        mlf,
-                        mlfrun,
-                        Dict(
-                            "algorithm.family" => str_family,
-                            "algorithm.name" => override.label,
-                            "task.hash" => hash_task,
-                            "task.DX" => DX,
-                            "task.N" => "N",
-                        ),
-                    )
-
-                    # TODO Deduplicate with above
-                    paramsdict = filter(
-                        kv -> kv.first ∉ blacklist(model),
-                        Dict(pairs(params(model))),
-                    )
-                    fixparams!(family, paramsdict)
-                    logparam(
-                        mlf,
-                        mlfrun,
-                        Dict([
-                            ("algorithm.param." * string(k), v) for
-                            (k, v) in paramsdict
-                        ]),
-                    )
-
-                    @info "Transforming training input data …"
-                    # Note that we cannot use a pipeline here because we need the scaler
-                    # later.
-                    scaler = MinMaxScaler()
-                    mach_scaler = machine(scaler, X)
-                    MLJ.fit!(mach_scaler)
-                    X = MLJ.transform(mach_scaler, X)
-
-                    @info "Fitting best configuration of $(override.label) for " *
-                          "task $(string(hash_task; base=16)) …"
-                    mach = machine(model, X, y)
-                    MLJ.fit!(mach)
-
-                    @info "Computing prediction metrics …"
-                    y_pred = MLJ.predict_mean(mach, X)
-                    y_test_pred = MLJ.predict_mean(mach, X_test)
-
-                    mae_train = mae(y, y_pred)
-                    mae_test = mae(y_test, y_test_pred)
-                    rmse_train = rmse(y, y_pred)
-                    rmse_test = rmse(y_test, y_test_pred)
-
-                    rs = rules(family, fitted_params(mach))
-                    # We'd have to convert stuff to the MLJ table format if we wanted to use
-                    # `inverse_transform` directly. I.e. convert `Intervals.Interval`'s
-                    # bounds etc. to be feature name–based.
-                    xmin = fitted_params(mach_scaler).xmin
-                    xmax = fitted_params(mach_scaler).xmax
-                    intervals =
-                        inverse_transform_interval.(
-                            rs.intervals,
-                            Ref(xmin),
-                            Ref(xmax),
-                        )
-
-                    mktempdir() do path
-                        fpath = path * "/rules.jls"
-                        serialize(fpath, intervals)
-                        return logartifact(mlf, mlfrun, fpath)
-                    end
-
-                    logmetric.(
-                        Ref(mlf),
-                        Ref(mlfrun),
-                        ["train.mae", "train.rmse", "test.mae", "test.rmse"],
-                        [mae_train, rmse_train, mae_test, rmse_test],
-                    )
-
-                    rep = report(mach)
-                    logreport(mlf, mlfrun, rep, "")
-
-                    @info "Finishing run $name_run_final …"
-                    updaterun(mlf, mlfrun, "FINISHED")
-                    @info "Finished run $name_run_final."
+        for override in overrides
+            let model = deepcopy(model)
+                for (k, v) in override.paramoverrides
+                    setproperty!(model, k, v)
                 end
+
+                @info "Starting run …"
+                mlfrun = createrun(
+                    mlf,
+                    mlfexp;
+                    run_name=ifelse(name_run == "", missing, name_run),
+                )
+                name_run_final = mlfrun.info.run_name
+                @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
+
+                @info "Logging hyperparameters to mlflow …"
+                logparam(
+                    mlf,
+                    mlfrun,
+                    Dict(
+                        "algorithm.family" => variant.label_family,
+                        "algorithm.name" => override.label,
+                        "task.hash" => hash_task,
+                        "task.DX" => DX,
+                        "task.N" => "N",
+                    ),
+                )
+
+                # TODO Deduplicate with above
+                paramsdict = filter(
+                    kv -> kv.first ∉ blacklist(variant.type_model),
+                    Dict(pairs(params(model))),
+                )
+                fixparams!(variant.type_model, paramsdict)
+                logparam(
+                    mlf,
+                    mlfrun,
+                    Dict([
+                        ("algorithm.param." * string(k), v) for
+                        (k, v) in paramsdict
+                    ]),
+                )
+
+                @info "Transforming training input data …"
+                # Note that we cannot use a pipeline here because we need the scaler
+                # later.
+                scaler = MinMaxScaler()
+                mach_scaler = machine(scaler, X)
+                MLJ.fit!(mach_scaler)
+                X = MLJ.transform(mach_scaler, X)
+
+                @info "Fitting best configuration of $(override.label) for " *
+                      "task $(string(hash_task; base=16)) …"
+                mach = machine(model, X, y)
+                MLJ.fit!(mach)
+
+                @info "Computing prediction metrics …"
+                y_pred = MLJ.predict_mean(mach, X)
+                y_test_pred = MLJ.predict_mean(mach, X_test)
+
+                mae_train = mae(y, y_pred)
+                mae_test = mae(y_test, y_test_pred)
+                rmse_train = rmse(y, y_pred)
+                rmse_test = rmse(y_test, y_test_pred)
+
+                rs = rules(variant.type_model, fitted_params(mach))
+                # We'd have to convert stuff to the MLJ table format if we wanted to use
+                # `inverse_transform` directly. I.e. convert `Intervals.Interval`'s
+                # bounds etc. to be feature name–based.
+                xmin = fitted_params(mach_scaler).xmin
+                xmax = fitted_params(mach_scaler).xmax
+                intervals =
+                    inverse_transform_interval.(
+                        rs.intervals,
+                        Ref(xmin),
+                        Ref(xmax),
+                    )
+
+                mktempdir() do path
+                    fpath = path * "/rules.jls"
+                    serialize(fpath, intervals)
+                    return logartifact(mlf, mlfrun, fpath)
+                end
+
+                logmetric.(
+                    Ref(mlf),
+                    Ref(mlfrun),
+                    ["train.mae", "train.rmse", "test.mae", "test.rmse"],
+                    [mae_train, rmse_train, mae_test, rmse_test],
+                )
+
+                rep = report(mach)
+                logreport(mlf, mlfrun, rep, "")
+
+                @info "Finishing run $name_run_final …"
+                updaterun(mlf, mlfrun, "FINISHED")
+                @info "Finished run $name_run_final."
             end
         end
     end

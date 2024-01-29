@@ -1,4 +1,4 @@
-function basemodel(
+function baseparams(
     ::Type{GARegressor},
     fiteval,
     size_pop,
@@ -6,23 +6,23 @@ function basemodel(
     crossover;
     testonly=false,
 )
-    return GARegressor(;
-        n_iter=ifelse(testonly, 10, 1000),
-        size_pop=size_pop,
-        fiteval=fiteval,
+    return Dict(
+        :n_iter => ifelse(testonly, 10, 1000),
+        :size_pop => size_pop,
+        :fiteval => fiteval,
         # dgmodel
-        x_min=0.0,
-        x_max=1.0,
-        nmatch_min=2,
-        n_iter_earlystop=500,
-        init=:inverse,
-        init_sample_fname="../2024-gecco-tasks/2024-01-09T16-54-46-439387-kdata/",
+        :x_min => 0.0,
+        :x_max => 1.0,
+        :nmatch_min => 2,
+        :n_iter_earlystop => 500,
+        :init => :inverse,
+        :init_sample_fname => "../2024-gecco-tasks/2024-01-09T16-54-46-439387-kdata/",
         # Ain't nobody got time for safety (this is still pretty safe, just
         # don't change any of the files in the `init_sample_fname` folder).
-        init_unsafe=true,
+        :init_unsafe => true,
         # These seem to be sensible defaults.
-        init_length_min=3,
-        init_length_max=50,
+        :init_length_min => 3,
+        :init_length_max => 50,
         # These are ignored anyways since we use `init_sample_fname`.
         # init_spread_min=0.1,
         # init_params_spread_a=1.0,
@@ -30,21 +30,21 @@ function basemodel(
         # init_spread_max=Inf,
         # init_rate_coverage_min=0.9,
         # If we don't use crossover, we want more add/rm mutation.
-        mutate_p_add=ifelse(crossover == :off, 0.4, 0.05),
-        mutate_p_rm=ifelse(crossover == :off, 0.4, 0.05),
-        mutate_rate_mut=1.0,
-        mutate_rate_std=0.05,
+        :mutate_p_add => ifelse(crossover == :off, 0.4, 0.05),
+        :mutate_p_rm => ifelse(crossover == :off, 0.4, 0.05),
+        :mutate_rate_mut => 1.0,
+        :mutate_rate_std => 0.05,
         # If crossover is :off, set it to spatial but then set crossover
         # probability to 0.
-        recomb=ifelse(crossover == :off, :spatial, crossover),
-        recomb_rate=ifelse(crossover == :off, 0.0, 0.8),
-        select=select,
+        :recomb => ifelse(crossover == :off, :spatial, crossover),
+        :recomb_rate => ifelse(crossover == :off, 0.0, 0.8),
+        :select => select,
         # TODO Consider to optimize this
-        select_width_window=7,
+        :select_width_window => 7,
         # TODO Consider to select a somewhat informed value instead of
         # ryerkerk2020's
-        select_lambda_window=0.004,
-        select_size_tournament=4,
+        :select_lambda_window => 0.004,
+        :select_size_tournament => 4,
     )
 end
 
@@ -76,7 +76,7 @@ function mkspace_mga(model, DX)
     return space
 end
 
-function blacklist(::GARegressor)
+function blacklist(::Type{GARegressor})
     return [:rng, :dgmodel]
 end
 
@@ -111,10 +111,11 @@ function mkvariant(
     crossover=true,
     testonly=false,
 )
-    return Variant(
-        "MGA$size_pop-$postfix",
-        "GARegressor",
-        basemodel(
+    return Variant(;
+        label="MGA$size_pop-$postfix",
+        label_family="GARegressor",
+        type_model=GARegressor,
+        params=baseparams(
             GARegressor,
             :NegAIC,
             size_pop,
@@ -122,7 +123,7 @@ function mkvariant(
             crossover;
             testonly=testonly,
         ),
-        nothing,
-        [],
+        mkspace=nothing,
+        additional=[],
     )
 end

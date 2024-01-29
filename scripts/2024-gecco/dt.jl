@@ -1,15 +1,15 @@
-function basemodel(::Type{DT})
+function baseparams(::Type{DT})
     # Note things we comment out here are being optimized (see `mkmkspace_dt`).
-    return DT(;
+    return Dict(
         # max_depth=-1,
-        min_samples_leaf=5,
+        :min_samples_leaf => 5,
         # min_samples_split=2,
-        min_purity_increase=0.0,
+        :min_purity_increase => 0.0,
         # Always consider all features.
-        n_subfeatures=0,
-        post_prune=false,
-        merge_purity_threshold=1.0,
-        feature_importance=:impurity,
+        :n_subfeatures => 0,
+        :post_prune => false,
+        :merge_purity_threshold => 1.0,
+        :feature_importance => :impurity,
     )
 end
 
@@ -41,7 +41,7 @@ function mkmkspace_dt(K_min, K_max, N)
     return mkspace_dt
 end
 
-function blacklist(::DT)
+function blacklist(::Type{DT})
     return [:rng]
 end
 
@@ -58,11 +58,12 @@ function userextras(::DT)
 end
 
 function mkvariant(::Type{DT}, n, nrules_min, nrules_max; testonly=false)
-    return Variant(
-        "DT$nrules_min-$nrules_max",
-        "DT",
-        basemodel(DT),
-        mkmkspace_dt(nrules_min, nrules_max, n),
-        [],
+    return Variant(;
+        label="DT$nrules_min-$nrules_max",
+        label_family="DT",
+        type_model=DT,
+        params=baseparams(DT),
+        mkspace=mkmkspace_dt(nrules_min, nrules_max, n),
+        additional=[],
     )
 end
