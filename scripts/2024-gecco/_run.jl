@@ -630,8 +630,20 @@ function _runbest(
                 logmetric.(
                     Ref(mlf),
                     Ref(mlfrun),
-                    ["train.mae", "train.rmse", "test.mae", "test.rmse"],
-                    [mae_train, rmse_train, mae_test, rmse_test],
+                    [
+                        "train.mae",
+                        "train.rmse",
+                        "test.mae",
+                        "test.rmse",
+                        "n_rules",
+                    ],
+                    [
+                        mae_train,
+                        rmse_train,
+                        mae_test,
+                        rmse_test,
+                        length(rs.intervals),
+                    ],
                 )
 
                 rep = report(mach)
