@@ -583,9 +583,10 @@ function _runbest(
                         "algorithm.family" => variant.label_family,
                         "algorithm.name" => override.label,
                         "algorithm.seed" => seed,
+                        "task.fname" => fname,
                         "task.hash" => hash_task,
                         "task.DX" => DX,
-                        "task.N" => "N",
+                        "task.N" => N,
                     ),
                 )
 
