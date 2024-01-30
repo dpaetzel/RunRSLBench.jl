@@ -5,7 +5,7 @@ using CSV
 using Dates
 using DataFrames
 using JSON
-using TOML
+using LibGit2
 using Missings
 using MLFlowClient
 using MLJ
@@ -20,6 +20,7 @@ using RunRSLBench.RuleSupport
 using RunRSLBench.XCSF
 using Serialization
 using Tables
+using TOML
 DT = @load DecisionTreeRegressor pkg = DecisionTree verbosity = 0
 
 # TODO Consolidate logtuningreport and logreport
@@ -515,6 +516,9 @@ function _runbest(
 )
     printvariants(; testonly=testonly)
 
+    git_commit = LibGit2.head(".")
+    git_dirty = LibGit2.isdirty(GitRepo("."))
+
     for (i, fname) in enumerate(fnames)
         @info "Starting best-parametrization runs for learning task $fname."
         @info "This is task $i of $(length(fnames))"
@@ -571,6 +575,14 @@ function _runbest(
                     mlf,
                     mlfexp;
                     run_name=ifelse(name_run == "", missing, name_run),
+                    # https://github.com/JuliaAI/MLFlowClient.jl/issues/30#issue-1855543109
+                    tags=[
+                        Dict("key" => "gitcommit", "value" => git_commit),
+                        Dict(
+                            "key" => "gitdirty",
+                            "value" => string(git_dirty),
+                        ),
+                    ],
                 )
                 name_run_final = mlfrun.info.run_name
                 @info "Started run $name_run_final with id $(mlfrun.info.run_id)."
