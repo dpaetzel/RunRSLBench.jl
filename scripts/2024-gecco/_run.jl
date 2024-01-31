@@ -113,15 +113,14 @@ Note that this only looks at the highest level of the report and does not
 descend into nested `NamedTuple`s or similar.
 """
 function logreport(mlf, mlfrun, rep, prefix)
+    @info "Logging machine report …"
     map(keys(rep)) do k
         log = getfield(rep, k)
         name_metric = ifelse(prefix == "", string(k), "$prefix.$(string(k))")
         # If a vector with as many entries as there are iterations (assumes
         # `n_iter` is the iteration count), log the vector iteration by
         # iteration.
-        if hasproperty(rep, :n_iter) &&
-           log isa AbstractVector &&
-           length(log) == rep.n_iter
+        if log isa AbstractVector
             # See comment below regarding file-based backend.
             # for i in eachindex(log)
             #     logmetric(mlf, mlfrun, name_metric, log[i]; step=i)
@@ -132,9 +131,7 @@ function logreport(mlf, mlfrun, rep, prefix)
                 return logartifact(mlf, mlfrun, fpath)
             end
             # Same as vector but for a matrix (i.e. multiple values per iteration).
-        elseif hasproperty(rep, :n_iter) &&
-               log isa AbstractMatrix &&
-               size(log, 2) == rep.n_iter
+        elseif log isa AbstractMatrix
             # While this is nice and all, with the file-based backend (yeah, I
             # know, “don't use that duh”), this is a huge bottleneck. Instead,
             # log it to a file and put that into the artifact store.
