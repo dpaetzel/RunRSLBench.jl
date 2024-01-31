@@ -8,7 +8,7 @@ function baseparams(
     testonly=false,
 )
     return Dict(
-        :n_iter => ifelse(testonly, 10, 1000),
+        :n_iter => ifelse(testonly, 10, 2000),
         :size_pop => size_pop,
         :fiteval => fiteval,
         # dgmodel
@@ -38,7 +38,7 @@ function baseparams(
         # If crossover is :off, set it to spatial but then set crossover
         # probability to 0.
         :recomb => ifelse(crossover == :off, :spatial, crossover),
-        :recomb_rate => ifelse(crossover == :off, 0.0, 0.8),
+        :recomb_rate => ifelse(crossover == :off, 0.0, 0.3),
         :select => select,
         # TODO Consider to optimize this
         :select_width_window => 7,
