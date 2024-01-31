@@ -1,9 +1,10 @@
 function baseparams(
     ::Type{GARegressor},
     fiteval,
-    size_pop,
+    size_pop;
     select,
-    crossover;
+    crossover,
+    p_mutate,
     testonly=false,
 )
     return Dict(
@@ -30,8 +31,8 @@ function baseparams(
         # init_spread_max=Inf,
         # init_rate_coverage_min=0.9,
         # If we don't use crossover, we want more add/rm mutation.
-        :mutate_p_add => ifelse(crossover == :off, 0.4, 0.05),
-        :mutate_p_rm => ifelse(crossover == :off, 0.4, 0.05),
+        :mutate_p_add => p_mutate,
+        :mutate_p_rm => p_mutate,
         :mutate_rate_mut => 1.0,
         :mutate_rate_std => 0.05,
         # If crossover is :off, set it to spatial but then set crossover
@@ -107,8 +108,9 @@ function mkvariant(
     ::Type{GARegressor},
     postfix,
     size_pop;
-    select=:lengthniching,
-    crossover=true,
+    select,
+    crossover,
+    p_mutate,
     testonly=false,
 )
     return Variant(;
@@ -118,9 +120,10 @@ function mkvariant(
         params=baseparams(
             GARegressor,
             :NegAIC,
-            size_pop,
-            select,
-            crossover;
+            size_pop;
+            select=select,
+            crossover=crossover,
+            p_mutate=p_mutate,
             testonly=testonly,
         ),
         mkspace=nothing,

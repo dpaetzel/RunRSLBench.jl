@@ -163,6 +163,7 @@ function listvariants(N; testonly=false)
             32;
             select=:lengthniching,
             crossover=:spatial,
+            p_mutate=0.05,
             testonly=testonly,
         ),
         mkvariant(
@@ -171,6 +172,7 @@ function listvariants(N; testonly=false)
             32;
             select=:lengthniching,
             crossover=:off,
+            p_mutate=0.4,
             testonly=testonly,
         ),
         mkvariant(
@@ -179,6 +181,7 @@ function listvariants(N; testonly=false)
             32;
             select=:tournament,
             crossover=:spatial,
+            p_mutate=0.05,
             testonly=testonly,
         ),
         mkvariant(
@@ -187,6 +190,34 @@ function listvariants(N; testonly=false)
             32;
             select=:lengthniching,
             crossover=:cutsplice,
+            p_mutate=0.05,
+            testonly=testonly,
+        ),
+        mkvariant(
+            GARegressor,
+            "lnselect-spatialx-highm",
+            32;
+            select=:lengthniching,
+            crossover=:spatial,
+            p_mutate=0.4,
+            testonly=testonly,
+        ),
+        mkvariant(
+            GARegressor,
+            "lnselect-cutsplicex-highm",
+            32;
+            select=:lengthniching,
+            crossover=:cutsplice,
+            p_mutate=0.4,
+            testonly=testonly,
+        ),
+        mkvariant(
+            GARegressor,
+            "trnmtselect-spatialx-highm",
+            32;
+            select=:tournament,
+            crossover=:spatial,
+            p_mutate=0.4,
             testonly=testonly,
         ),
         mkvariant(DT, N, 1, 70; testonly=testonly),
@@ -291,10 +322,10 @@ end
 function printvariants(; testonly=false)
     # Since we only want to get the names, we use 0 here.
     # TODO Clean up this variants business, properly parallelize
-    variants = listvariants(0; testonly=testonly)
+    variants = getproperty.(listvariants(0; testonly=testonly), :label)
     println("Available variants:")
     for v in variants
-        println(v.label)
+        println(v)
     end
 end
 
