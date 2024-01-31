@@ -373,9 +373,10 @@ function _optparams(
             Dict(
                 "algorithm.family" => string(variant.label_family),
                 "algorithm.name" => variant.label,
+                "algorithm.testonly" => testonly,
                 "task.hash" => hash_task,
                 "task.DX" => DX,
-                "task.N" => "N",
+                "task.N" => N,
             ),
         )
 
@@ -480,7 +481,7 @@ function _optparams(
     end
 end
 
-function getoptparams(mlf, label, hash_task)
+function getoptparams(mlf, label, hash_task, testonly)
     mlfexp = getexperiment(mlf, "optparams")
     mlfruns = searchruns(
         mlf,
@@ -488,6 +489,7 @@ function getoptparams(mlf, label, hash_task)
         filter_params=Dict(
             "algorithm.name" => label,
             "task.hash" => hash_task,
+            "algorithm.testonly" => testonly,
         ),
     )
 
@@ -543,6 +545,9 @@ function _runbest(
     name_run::String="",
 )
     printvariants(; testonly=testonly)
+    if testonly
+        @warn "Expect weird results, testonly=true"
+    end
 
     git_commit = LibGit2.head(".")
     git_dirty = LibGit2.isdirty(GitRepo("."))
@@ -573,7 +578,8 @@ function _runbest(
         else
             @info "This algorithm was tuned, trying to load " *
                   "optimized hyperparameters …"
-            paramsdict = getoptparams(mlf, variant.label, hash_task)
+            paramsdict =
+                getoptparams(mlf, variant.label, hash_task, testonly)
             fixparams!(variant.type_model, paramsdict)
             paramsdict
         end
@@ -622,6 +628,7 @@ function _runbest(
                     Dict(
                         "algorithm.family" => variant.label_family,
                         "algorithm.name" => override.label,
+                        "algorithm.testonly" => testonly,
                         "algorithm.seed" => seed,
                         "task.fname" => fname,
                         "task.hash" => hash_task,
@@ -656,7 +663,7 @@ function _runbest(
                 @info "Fitting best configuration of $(override.label) for " *
                       "task $(string(hash_task; base=16)) …"
                 mach = machine(model, X, y)
-                MLJ.fit!(mach)
+                MLJ.fit!(mach; verbosity=1000)
 
                 @info "Computing prediction metrics …"
                 y_pred = MLJ.predict_mean(mach, X)
