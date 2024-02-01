@@ -5,6 +5,7 @@ function baseparams(
     select,
     crossover,
     p_mutate,
+    init=:inverse,
     testonly=false,
 )
     return Dict(
@@ -16,7 +17,7 @@ function baseparams(
         :x_max => 1.0,
         :nmatch_min => 2,
         :n_iter_earlystop => 500,
-        :init => :inverse,
+        :init => ifelse(init == :random, :custom, :inverse),
         :init_sample_fname => "../2024-gecco-tasks/2024-01-09T16-54-46-439387-kdata/",
         # Ain't nobody got time for safety (this is still pretty safe, just
         # don't change any of the files in the `init_sample_fname` folder).
@@ -25,9 +26,9 @@ function baseparams(
         :init_length_min => 3,
         :init_length_max => 50,
         # These are ignored anyways since we use `init_sample_fname`.
-        # init_spread_min=0.1,
-        # init_params_spread_a=1.0,
-        # init_params_spread_b=1.0,
+        :init_spread_min => 0.1,
+        :init_params_spread_a => 1.0,
+        :init_params_spread_b => 1.0,
         # init_spread_max=Inf,
         # init_rate_coverage_min=0.9,
         # If we don't use crossover, we want more add/rm mutation.
@@ -111,6 +112,7 @@ function mkvariant(
     select,
     crossover,
     p_mutate,
+    init=:inverse,
     testonly=false,
 )
     return Variant(;
@@ -124,6 +126,7 @@ function mkvariant(
             select=select,
             crossover=crossover,
             p_mutate=p_mutate,
+            init=init,
             testonly=testonly,
         ),
         mkspace=nothing,

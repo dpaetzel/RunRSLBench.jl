@@ -217,6 +217,26 @@ function listvariants(N; testonly=false)
             p_mutate=0.4,
             testonly=testonly,
         ),
+        mkvariant(
+            GARegressor,
+            "lnselect-nox-highm-randinit",
+            32;
+            select=:lengthniching,
+            crossover=:off,
+            p_mutate=0.4,
+            init=:random,
+            testonly=testonly,
+        ),
+        mkvariant(
+            GARegressor,
+            "lnselect-spatialx-highm-randinit",
+            32;
+            select=:lengthniching,
+            crossover=:spatial,
+            p_mutate=0.4,
+            init=:random,
+            testonly=testonly,
+        ),
         mkvariant(DT, N, 1, 70; testonly=testonly),
         mkvariant(XCSFRegressor, N, 500; testonly=testonly),
         mkvariant(XCSFRegressor, N, 1000; testonly=testonly),
