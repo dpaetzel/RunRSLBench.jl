@@ -13,16 +13,14 @@ using StatsBase
 
 AOG = AlgebraOfGraphics
 
-# 2024-01-29 run set (effectless bloat)
-# jids = 529675:529772
-# 2024-01-30 run set
-# jids = 533439:533544 (aborted due to wanting to use more data sets)
-# 2024-01-30 22:18 run set (seeds 0-4, aka 1756-.*)
-jids = 535054:535501
-# 2024-01-31 9:10 run set (seeds 0-4, but only additional high mutation runs,
-# aka 1756-highm-.*)
-# TODO Merge this with previous
-# jids = 537998:538177
+set_theme!()
+update_theme!(theme_latexfonts())
+update_theme!(;
+    size=(800, 800),
+    # palette=(; colors=:seaborn_colorblind),
+    palette=(; color=reverse(ColorSchemes.seaborn_colorblind.colors)),
+)
+set_kitty_config!(:scale, 0.8)
 
 const nameformat = r"^([^-]+)-(([^-]*)-)?(\d+)_(\d+)$"
 
@@ -88,101 +86,140 @@ function duration(df)
     )
 end
 
-_df = _loadruns(jids)
+function graphs(df=nothing)
+    df = if df == nothing
 
-set_theme!()
-update_theme!(theme_latexfonts())
-update_theme!(;
-    size=(800, 800),
-    # palette=(; colors=:seaborn_colorblind),
-    palette=(; color=reverse(ColorSchemes.seaborn_colorblind.colors)),
-)
-set_kitty_config!(:scale, 0.8)
+        # 2024-01-29 run set (effectless bloat)
+        # jids = 529675:529772
+        # 2024-01-30 run set
+        # jids = 533439:533544 (aborted due to wanting to use more data sets)
+        # 2024-01-30 22:18 run set (seeds 0-4, aka 1756-.*, n_iter=1000)
+        # _df = _loadruns(535054:535501)
+        # 2024-01-31 9:10 run set (seeds 0-4, but only 3 additional high
+        # mutation runs, aka 1756-highm-.*, n_iter=1000)
+        # Note: One run failed due to Slurm error, the repetition is 538918.
+        # Note: _df2 has to be merged with _df to get all 10 algorithms.
+        # _df2 = _loadruns(vcat(collect(537998:538177), 538918))
+        # 2024-01-31 19:29 run set (seeds 0-4, all MGA only, this time n_iter=2000)
+        # Note: Has to be merged with XCSF and DT runs from _df
+        # _df3 = _loadruns(539284:539727)
 
-df = deepcopy(_df)
+        # 2024-02-01 18:57 run set (seeds 0-4, only randinit MGAs)
+        # TODO Check these
+        # 541404:541547
 
-# Unselect columns that we do not require.
-df = select(
-    df,
-    Not([
-        "start_time",
-        "end_time",
-        "lifecycle_stage",
-        "experiment_id",
-        "run_id",
-        "status",
-    ]),
-)
+        # New approach with longer MGA runs (n_iter=2000).
+        #
+        # Get MGA runs from:
+        #
+        # 2024-01-31 19:29 run set (seeds 0-4, all MGA only, this time n_iter=2000)
+        _df3 = _loadruns(539284:539727)
+        @assert nrow(_df3) == 7 * 60 * 5
+        # Get DT and XCSF runs from:
+        #
+        # 2024-01-30 22:18 run set (seeds 0-4, aka 1756-.*, n_iter=1000)
+        _df4 = _loadruns(535054:535501)
+        _df5 = subset(
+            _df4,
+            "params.algorithm.family" =>
+                (f -> f .∈ Ref(["DT", "XCSFRegressor"])),
+        )
+        @assert nrow(_df5) == 3 * 60 * 5
 
-# mlflow stores these as `BigInt` `String`s.
-df[!, "params.task.hash"] .= parse.(BigInt, df[:, "params.task.hash"])
+        df = vcat(deepcopy(_df3), deepcopy(_df5))
+    else
+        df
+    end
 
-# TODO Adjust n_variants later for 3(?) more variants
-n_variants = 7
-n_tasks = 60
-n_reps = 5
-n_runs = n_variants * n_tasks * n_reps
-if nrow(df) != n_runs
-    @warn "Less runs ($(nrow(df))) than expected ($n_runs)!"
-end
+    # Unselect columns that we do not require.
+    df = select(
+        df,
+        Not([
+            "start_time",
+            "end_time",
+            "lifecycle_stage",
+            "experiment_id",
+            "run_id",
+            "status",
+        ]),
+    )
 
-# duration(df)
+    # mlflow stores these as `BigInt` `String`s.
+    df[!, "params.task.hash"] .= parse.(BigInt, df[:, "params.task.hash"])
 
-alg_pretty = Dict(
-    "DT1-70" => "DT (1–70)",
-    "XCSF500" => "XCSF (1–500)",
-    "XCSF1000" => "XCSF (1–1000)",
-    "MGA32-lnselect-spatialx" => "GA x:spt s:len",
-    "MGA32-lnselect-nox" => "GA x:off s:len",
-    "MGA32-trnmtselect-spatialx" => "GA x:spt s:trn",
-    "MGA32-lnselect-cutsplicex" => "GA x:cut s:len",
-    "MGA32-trnmtselect-spatialx-highm" => "GA x:spt s:trn m+",
-    "MGA32-lnselect-cutsplicex-highm" => "GA x:cut s:len m+",
-    "MGA32-lnselect-spatialx-highm" => "GA x:spt s:len m+",
-)
+    n_variants = 10
+    n_tasks = 60
+    n_reps = 5
+    n_runs = n_variants * n_tasks * n_reps
+    if nrow(df) != n_runs
+        @warn "Different number of runs ($(nrow(df))) than expected ($n_runs)!"
+    end
 
-alg_sorter = sorter([
-    "DT (1–70)",
-    "XCSF (1–500)",
-    "XCSF (1–1000)",
-    "GA x:spt s:len",
-    "GA x:off s:len",
-    "GA x:spt s:trn",
-    "GA x:cut s:len",
-    # "GA x:spt s:trn m+",
-    # "GA x:cut s:len m+",
-    # "GA x:spt s:len m+",
-])
+    # Extract task `K` values from `stats` files.
+    #
+    # I'm aware that this whole push-to-an-array business is ugly and could be done
+    # better.
+    Ks = []
+    for row in eachrow(df)
+        fname = replace(row["params.task.fname"], "data.npz" => "stats.jls")
+        hashdf = row["params.task.hash"]
 
-# Rename algorithms to pretty names.
-df[:, "params.algorithm.name"] .=
-    get.(Ref(alg_pretty), df[:, "params.algorithm.name"], missing)
+        _stats = deserialize(fname)
+        hashfile = BigInt(_stats[:hash])
+        # Sanity check. Did the runs in mlflow run on the same data I have locally?
+        @assert hashdf == hashfile
 
-# Extract task `K` values from `stats` files.
-#
-# I'm aware that this whole push-to-an-array business is ugly and could be done
-# better.
-Ks = []
-for row in eachrow(df)
-    fname = replace(row["params.task.fname"], "data.npz" => "stats.jls")
-    hashdf = row["params.task.hash"]
+        push!(Ks, _stats[:stats][:K])
+    end
+    df[!, "params.task.K"] = Ks
+    @assert all(df[:, "params.task.K"] .> 0) "All should have a " *
+                                             "non-zero K entry now"
 
-    _stats = deserialize(fname)
-    hashfile = BigInt(_stats[:hash])
-    # Sanity check. Did the runs in mlflow run on the same data I have locally?
-    @assert hashdf == hashfile
+    # Unselect K=2.
+    df = subset(df, "params.task.K" => (k -> k .> 2))
 
-    push!(Ks, _stats[:stats][:K])
-end
-df[!, "params.task.K"] = Ks
-@assert all(df[:, "params.task.K"] .> 0) "All should have a " *
-                                         "non-zero K entry now"
+    n_variants = 10
+    n_tasks = 60 - 6
+    n_reps = 5
+    n_runs = n_variants * n_tasks * n_reps
+    if nrow(df) != n_runs
+        @warn "Different number of runs ($(nrow(df))) than expected ($n_runs)!"
+    end
 
-coloralg =
-    mapping(; color="params.algorithm.name" => alg_sorter => "Algorithm")
+    alg_pretty = Dict(
+        "DT1-70" => "DT (1–70)",
+        "XCSF500" => "XCSF (1–500)",
+        "XCSF1000" => "XCSF (1–1000)",
+        "MGA32-lnselect-spatialx" => "GA x:spt s:len",
+        "MGA32-lnselect-nox" => "GA x:off s:len m+",
+        "MGA32-trnmtselect-spatialx" => "GA x:spt s:trn",
+        "MGA32-lnselect-cutsplicex" => "GA x:cut s:len",
+        "MGA32-trnmtselect-spatialx-highm" => "GA x:spt s:trn m+",
+        "MGA32-lnselect-cutsplicex-highm" => "GA x:cut s:len m+",
+        "MGA32-lnselect-spatialx-highm" => "GA x:spt s:len m+",
+    )
 
-display(
-    draw(
+    alg_sorter = sorter([
+        "DT (1–70)",
+        "XCSF (1–500)",
+        "XCSF (1–1000)",
+        "GA x:spt s:len",
+        "GA x:off s:len m+",
+        "GA x:spt s:trn",
+        "GA x:cut s:len",
+        "GA x:spt s:trn m+",
+        "GA x:cut s:len m+",
+        "GA x:spt s:len m+",
+    ])
+
+    # Rename algorithms to pretty names.
+    df[:, "params.algorithm.name"] .=
+        get.(Ref(alg_pretty), df[:, "params.algorithm.name"], missing)
+
+    coloralg =
+        mapping(; color="params.algorithm.name" => alg_sorter => "Algorithm")
+
+    plt =
         data(df) *
         mapping(
             "metrics.test.mae";
@@ -190,13 +227,29 @@ display(
             row="params.task.K" => nonnumeric,
         ) *
         coloralg *
-        visual(ECDFPlot);
-        # axis=(; xscale=log10),
-    ),
-)
+        visual(ECDFPlot)
+    fig = draw(plt; facet=(; linkxaxes=:none))
+    CairoMakie.save("plots/TestMAEAll.pdf", fig)
+    display(fig)
 
-display(
-    draw(
+    plt =
+        data(df) *
+        mapping(
+            "metrics.train.mae";
+            col="params.task.DX" => nonnumeric,
+            row="params.task.K" => nonnumeric,
+        ) *
+        coloralg *
+        visual(ECDFPlot)
+    fig = draw(
+        plt;
+        # axis=(; xscale=log10),
+        facet=(; linkxaxes=:none),
+    )
+    CairoMakie.save("plots/TrainMAEAll.pdf")
+    display(fig)
+
+    plt =
         data(df) *
         mapping(
             "metrics.n_rules";
@@ -204,17 +257,20 @@ display(
             row="params.task.K" => nonnumeric,
         ) *
         coloralg *
-        visual(ECDFPlot);
+        visual(ECDFPlot)
+    fig = draw(
+        plt;
         # axis=(; xscale=log10),
-    ),
-)
+        facet=(; linkxaxes=:none),
+    )
+    display(fig)
 
-display(
-    draw(
+    plt =
         data(
             subset(
                 df,
-                "params.algorithm.family" => (f -> f .== "GARegressor"),
+                "params.algorithm.family" =>
+                    (f -> f .∈ Ref(["GARegressor", "DT"])),
             ),
         ) *
         mapping(
@@ -223,17 +279,20 @@ display(
             row="params.task.K" => nonnumeric,
         ) *
         coloralg *
-        visual(ECDFPlot);
+        visual(ECDFPlot)
+    fig = draw(
+        plt;
         # axis=(; xscale=log10),
-    ),
-)
+        facet=(; linkxaxes=:none),
+    )
+    display(fig)
 
-display(
-    draw(
+    plt =
         data(
             subset(
                 df,
-                "params.algorithm.family" => (f -> f .== "GARegressor"),
+                "params.algorithm.family" =>
+                    (f -> f .∈ Ref(["GARegressor", "DT"])),
             ),
         ) *
         mapping(
@@ -242,38 +301,144 @@ display(
             row="params.task.K" => nonnumeric,
         ) *
         coloralg *
-        visual(ECDFPlot);
+        visual(ECDFPlot)
+    fig = draw(
+        plt;
         # axis=(; xscale=log10),
-    ),
-)
+        facet=(; linkxaxes=:none),
+    )
+    display(fig)
 
-dfga = subset(df, "params.algorithm.family" => (f -> f .== "GARegressor"))
+    return df
+end
 
-idxs = sample(1:nrow(dfga), 20)
-for idx in idxs
-    # fitness = Matrix(readcsvartifact.(df.artifact_uri, "log_fitness.csv"))
-    _fitness =
-        Matrix(readcsvartifact(dfga.artifact_uri[idx], "log_fitness.csv"))
+function chkearlystop(df)
+    sort(
+        combine(
+            groupby(
+                df,
+                ["params.task.DX", "params.task.K", "params.algorithm.name"],
+            ),
+            "metrics.n_iter" => mean,
+        ),
+    )
 
-    # Let's sort the fitness row-wise (lowest fitness at the start of each row).
+    return nothing
+end
+
+function readfitness(artifact_uri)
+    _fitness = Matrix(readcsvartifact(artifact_uri, "log_fitness.csv"))
+
+    # Let's sort the fitness row-wise (lowest fitness at the start of each row)
+    # and create a nice `DataFrame`.
     fitness = deepcopy(_fitness)
     fitness = reduce(vcat, transpose.(sort.(eachrow(fitness))))
     fitness = DataFrame(fitness, :auto)
     fitness[!, "Iteration"] = 1:nrow(fitness)
-    fitness =
+    return fitness =
         stack(fitness; variable_name="Ranked Solution", value_name="Fitness")
-    display(
+end
+
+function readfitnesselitist(artifact_uri)
+    fitness = readfitness(artifact_uri)
+    return subset(fitness, "Ranked Solution" => (s -> s .== "x32"))
+end
+
+function fitnessanalysis()
+    # NOTE This should work up to the fact that i need to deserialize (or wait a
+    # long time for ssh to generate felitist column) the dfga file (including
+    # felitist column).
+    dfga = subset(df, "params.algorithm.family" => (f -> f .== "GARegressor"))
+
+    idxs = sample(1:nrow(dfga), 20)
+    for idx in idxs
+        _fitness = readfitness(dfga.artifact_uri[idx])
+
+        fitness = deepcopy(_fitness)
+
+        display(
+            draw(
+                data(fitness) *
+                mapping("Iteration", "Fitness"; color="Ranked Solution") *
+                visual(Lines),
+            ),
+        )
+
+        display(
+            draw(
+                data(fitness_elitist) *
+                mapping("Iteration", "Fitness"; color="Ranked Solution") *
+                visual(Lines),
+            ),
+        )
+
+        println(
+            dfga[
+                idx,
+                ["params.algorithm.name", "params.task.DX", "params.task.K"],
+            ],
+        )
+        println()
+    end
+
+    function getfitnessofelitists()
+        error("Takes long, consider to read jls file instead")
+        felitist = readfitnesselitist.(dfga.artifact_uri)
+        jidsstr = replace(string(jids), ":" => "-")
+        # serialize("$jidsstr-felitist.jls", felitist)
+        return felitst
+    end
+
+    function fitnessmeanvar(arrays)
+        # Each of the 1000 rows is 30 entries: 6 tasks and 5 reps each.
+        uuu = reduce(hcat, arrays)
+        m = vec(mean(uuu; dims=2))
+        return (;
+            iteration=collect(1:length(m)),
+            fmean=m,
+            fstd=vec(std(uuu; dims=2)),
+        )
+    end
+
+    dfga[!, "felitist"] = getproperty.(felitist, :Fitness)
+    # Make a backup.
+    dfga_orig = deepcopy(dfga)
+
+    dfga = combine(
+        groupby(
+            dfga,
+            ["params.task.DX", "params.task.K", "params.algorithm.name"],
+        ),
+        "felitist" => fitnessmeanvar => AsTable,
+    )
+    dfga[!, "fstd_lower"] = dfga.fmean - dfga.fstd
+    dfga[!, "fstd_upper"] = dfga.fmean + dfga.fstd
+
+    return display(
         draw(
-            data(fitness) *
-            mapping("Iteration", "Fitness"; color="Ranked Solution") *
-            visual(Lines),
+            data(dfga) *
+            coloralg *
+            mapping(;
+                col="params.task.DX" => nonnumeric,
+                row="params.task.K" => nonnumeric,
+            ) *
+            # (
+            #     mapping(
+            #         "iteration",
+            #         "fmean";
+            #     ) * visual(Lines)
+            # ) *
+            # (mapping("iteration", "fstd_lower", "fstd_upper") * visual(Band)),
+            (
+                mapping(
+                    "iteration",
+                    "fmean";
+                    lower="fstd_lower",
+                    upper="fstd_upper",
+                ) * visual(LinesFill)
+            );
+            facet=(; linkyaxes=:none),
         ),
     )
-    println(
-        dfga[
-            idx,
-            ["params.algorithm.name", "params.task.DX", "params.task.K"],
-        ],
-    )
-    println()
+    # return serialize("$jidsstr-dfga.jls", dfga)
 end
