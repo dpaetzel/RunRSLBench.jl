@@ -9,7 +9,7 @@ function baseparams(
     testonly=false,
 )
     return Dict(
-        :n_iter => ifelse(testonly, 10, 2000),
+        :n_iter => ifelse(testonly, 10, 1000),
         :size_pop => size_pop,
         :fiteval => fiteval,
         # dgmodel
