@@ -8,6 +8,7 @@ using KittyTerminalImages
 using MLFlowClient
 using NPZ
 using RSLModels.MLFlowUtils
+using ProgressMeter
 using Serialization
 using StatsBase
 
@@ -86,6 +87,35 @@ function duration(df)
     )
 end
 
+alg_pretty = Dict(
+    "DT1-70" => "DT (1–70)",
+    "XCSF500" => "XCSF (1–500)",
+    "XCSF1000" => "XCSF (1–1000)",
+    "MGA32-lnselect-spatialx" => "GA x:spt s:len",
+    "MGA32-lnselect-nox" => "GA x:off s:len m+",
+    "MGA32-trnmtselect-spatialx" => "GA x:spt s:trn",
+    "MGA32-lnselect-cutsplicex" => "GA x:cut s:len",
+    "MGA32-trnmtselect-spatialx-highm" => "GA x:spt s:trn m+",
+    "MGA32-lnselect-cutsplicex-highm" => "GA x:cut s:len m+",
+    "MGA32-lnselect-spatialx-highm" => "GA x:spt s:len m+",
+)
+
+alg_sorter = sorter([
+    "DT (1–70)",
+    "XCSF (1–500)",
+    "XCSF (1–1000)",
+    "GA x:spt s:len",
+    "GA x:spt s:trn",
+    "GA x:off s:len m+",
+    "GA x:cut s:len",
+    "GA x:spt s:trn m+",
+    "GA x:cut s:len m+",
+    "GA x:spt s:len m+",
+])
+
+coloralg =
+    mapping(; color="params.algorithm.name" => alg_sorter => "Algorithm")
+
 function graphs(df=nothing)
     df = if df == nothing
 
@@ -125,6 +155,11 @@ function graphs(df=nothing)
                 (f -> f .∈ Ref(["DT", "XCSFRegressor"])),
         )
         @assert nrow(_df5) == 3 * 60 * 5
+
+        # New runs (only MGA) with correct AICc.
+        #
+        # 541720:542259
+        # TODO Gotta merge thes with the XCSF and DT (i.e. _df5).
 
         df = vcat(deepcopy(_df3), deepcopy(_df5))
     else
@@ -186,32 +221,6 @@ function graphs(df=nothing)
         @warn "Different number of runs ($(nrow(df))) than expected ($n_runs)!"
     end
 
-    alg_pretty = Dict(
-        "DT1-70" => "DT (1–70)",
-        "XCSF500" => "XCSF (1–500)",
-        "XCSF1000" => "XCSF (1–1000)",
-        "MGA32-lnselect-spatialx" => "GA x:spt s:len",
-        "MGA32-lnselect-nox" => "GA x:off s:len m+",
-        "MGA32-trnmtselect-spatialx" => "GA x:spt s:trn",
-        "MGA32-lnselect-cutsplicex" => "GA x:cut s:len",
-        "MGA32-trnmtselect-spatialx-highm" => "GA x:spt s:trn m+",
-        "MGA32-lnselect-cutsplicex-highm" => "GA x:cut s:len m+",
-        "MGA32-lnselect-spatialx-highm" => "GA x:spt s:len m+",
-    )
-
-    alg_sorter = sorter([
-        "DT (1–70)",
-        "XCSF (1–500)",
-        "XCSF (1–1000)",
-        "GA x:spt s:len",
-        "GA x:spt s:trn",
-        "GA x:off s:len m+",
-        "GA x:cut s:len",
-        "GA x:spt s:trn m+",
-        "GA x:cut s:len m+",
-        "GA x:spt s:len m+",
-    ])
-
     # Rename algorithms to pretty names.
     df[:, "params.algorithm.name"] .=
         get.(Ref(alg_pretty), df[:, "params.algorithm.name"], missing)
@@ -224,9 +233,6 @@ function graphs(df=nothing)
         palette=(; color=reverse(ColorSchemes.seaborn_colorblind.colors)),
     )
     set_kitty_config!(:scale, 0.8)
-
-    coloralg =
-        mapping(; color="params.algorithm.name" => alg_sorter => "Algorithm")
 
     myecdf =
         mapping(;
@@ -256,7 +262,7 @@ function graphs(df=nothing)
                     n .∈ Ref([
                         "DT (1–70)",
                         "GA x:off s:len m+",
-                        "XCSF (1–500)",
+                        "XCSF (1–1000)",
                     ])
             ),
         ),
@@ -292,20 +298,6 @@ function graphs(df=nothing)
     return df
 end
 
-function chkearlystop(df)
-    sort(
-        combine(
-            groupby(
-                df,
-                ["params.task.DX", "params.task.K", "params.algorithm.name"],
-            ),
-            "metrics.n_iter" => mean,
-        ),
-    )
-
-    return nothing
-end
-
 function readfitness(artifact_uri)
     _fitness = Matrix(readcsvartifact(artifact_uri, "log_fitness.csv"))
 
@@ -324,14 +316,180 @@ function readfitnesselitist(artifact_uri)
     return subset(fitness, "Ranked Solution" => (s -> s .== "x32"))
 end
 
-function fitnessanalysis()
+function fitnessmeanvar(arrays)
+    # Each of the 1000 rows is 30 entries: 6 tasks and 5 reps each.
+    uuu = reduce(hcat, arrays)
+    m = vec(mean(uuu; dims=2))
+    return (;
+        iteration=collect(1:length(m)),
+        fmean=m,
+        fstd=vec(std(uuu; dims=2)),
+    )
+end
+
+# array = df_ga.felitist[1]
+function ratedeltas(array, ds=[1400, 1200, 1000, 800, 600, 400, 200])
+    return NamedTuple(
+        Symbol.("ratedelta" .* string.(ds)) .=>
+            array[2000 .- ds] ./ array[end],
+    )
+end
+
+# Call graphs without argument if you don't have the `DataFrame` yet.
+df = graphs(_df)
+
+function elemwisemean(x...; ds=[1400, 1200, 1000, 800, 600, 400, 200])
+    return NamedTuple(
+        Symbol.("ratedelta" .* string.(ds)) .=> round.(mean.(x); digits=4),
+    )
+end
+
+function elemwisestd(x...; ds=[1400, 1200, 1000, 800, 600, 400, 200])
+    return NamedTuple(
+        Symbol.("ratedelta" .* string.(ds)) .=> round.(std.(x); digits=4),
+    )
+end
+
+function analyseconvergence()
+    df_ga = subset(df, "params.algorithm.family" => (f -> f .== "GARegressor"))
+    fitnesses = @showprogress map(readfitnesselitist, df_ga.artifact_uri)
+    _fitnesses = deepcopy(fitnesses)
+    serialize("2024-02-02-10-22-fitnesses.jls", fitnesses)
+
+    df_ga[!, "felitist"] = getproperty.(fitnesses, :Fitness)
+    _df_ga = deepcopy(df_ga)
+    df_ga = deepcopy(_df_ga)
+    serialize("2024-02-02-10-22-df_ga.jls", df_ga)
+
+    df_ga = transform(df_ga, "felitist" => ByRow(ratedeltas) => AsTable)
+
+    tablemean = sort(
+        combine(
+            groupby(
+                df_ga,
+                ["params.algorithm.name"],
+                # ["params.task.DX", "params.task.K", "params.algorithm.name"],
+            ),
+            # r"^x\d+$" => (xuiae -> @infiltrate),
+            r"^ratedelta\d+$" => elemwisemean => AsTable,
+            # (
+            #     (a, b, c, d) -> (;
+            #         ratedelta800=mean(a),
+            #         ratedelta600=mean(b),
+            #         ratedelta400=mean(c),
+            #         ratedelta200=mean(d),
+            #     )
+            # ) => AsTable,
+        ),
+    )
+
+    tablestd = sort(
+        combine(
+            groupby(
+                df_ga,
+                ["params.algorithm.name"],
+                # ["params.task.DX", "params.task.K", "params.algorithm.name"],
+            ),
+            # r"^x\d+$" => (xuiae -> @infiltrate),
+            r"^ratedelta\d+$" => elemwisestd => AsTable,
+            # (
+            #     (a, b, c, d) -> (;
+            #         ratedelta800=mean(a),
+            #         ratedelta600=mean(b),
+            #         ratedelta400=mean(c),
+            #         ratedelta200=mean(d),
+            #     )
+            # ) => AsTable,
+        ),
+    )
+
+    println("stds:")
+    display(tablestd)
+    println("means:")
+    display(tablemean)
+    println(tolatex(tablemean))
+
+    # plt =
+    #     data(df_ga) *
+    #     mapping(;
+    #         col="params.task.DX" => nonnumeric,
+    #         row="params.task.K" => nonnumeric,
+    #     ) *
+    #     mapping("params.task.fname", "delta200") *
+    #     coloralg *
+    #     visual(Lines)
+    # display(draw(plt))
+
+    # Fails because number of felitist entries differ due to early stopping.
+    # df_ga2 = combine(
+    #     groupby(
+    #         df_ga,
+    #         ["params.task.DX", "params.task.K", "params.algorithm.name"],
+    #     ),
+    #     "felitist" => fitnessmeanvar => AsTable,
+    # )
+    # df_ga2[!, "fstd_lower"] = df_ga2.fmean - df_ga2.fstd
+    # df_ga2[!, "fstd_upper"] = df_ga2.fmean + df_ga2.fstd
+    # display(
+    #     draw(
+    #         data(dfga) *
+    #         coloralg *
+    #         mapping(;
+    #             col="params.task.DX" => nonnumeric,
+    #             row="params.task.K" => nonnumeric,
+    #         ) *
+    #         # (
+    #         #     mapping(
+    #         #         "iteration",
+    #         #         "fmean";
+    #         #     ) * visual(Lines)
+    #         # ) *
+    #         # (mapping("iteration", "fstd_lower", "fstd_upper") * visual(Band)),
+    #         (
+    #             mapping(
+    #                 "iteration",
+    #                 "fmean";
+    #                 lower="fstd_lower",
+    #                 upper="fstd_upper",
+    #             ) * visual(LinesFill)
+    #         );
+    #         facet=(; linkyaxes=:none),
+    #     ),
+    # )
+
+    return fitnesses
+end
+
+function chkearlystop(df)
+    sort(
+        combine(
+            groupby(
+                df,
+                ["params.task.DX", "params.task.K", "params.algorithm.name"],
+            ),
+            "metrics.n_iter" => mean,
+        ),
+    )
+
+    return nothing
+end
+
+# function getfitnessofelitists(df)
+#     error("Takes long, consider to read jls file instead")
+#     felitist = readfitnesselitist.(df.artifact_uri)
+#     jidsstr = replace(string(jids), ":" => "-")
+#     # serialize("$jidsstr-felitist.jls", felitist)
+#     return felitst
+# end
+
+function oldfitnessanalysis()
     # NOTE This should work up to the fact that i need to deserialize (or wait a
     # long time for ssh to generate felitist column) the dfga file (including
     # felitist column).
     dfga = subset(df, "params.algorithm.family" => (f -> f .== "GARegressor"))
 
     idxs = sample(1:nrow(dfga), 20)
-    for idx in idxs
+    @showprogress for idx in idxs
         _fitness = readfitness(dfga.artifact_uri[idx])
 
         fitness = deepcopy(_fitness)
@@ -369,56 +527,5 @@ function fitnessanalysis()
         return felitst
     end
 
-    function fitnessmeanvar(arrays)
-        # Each of the 1000 rows is 30 entries: 6 tasks and 5 reps each.
-        uuu = reduce(hcat, arrays)
-        m = vec(mean(uuu; dims=2))
-        return (;
-            iteration=collect(1:length(m)),
-            fmean=m,
-            fstd=vec(std(uuu; dims=2)),
-        )
-    end
-
-    dfga[!, "felitist"] = getproperty.(felitist, :Fitness)
-    # Make a backup.
-    dfga_orig = deepcopy(dfga)
-
-    dfga = combine(
-        groupby(
-            dfga,
-            ["params.task.DX", "params.task.K", "params.algorithm.name"],
-        ),
-        "felitist" => fitnessmeanvar => AsTable,
-    )
-    dfga[!, "fstd_lower"] = dfga.fmean - dfga.fstd
-    dfga[!, "fstd_upper"] = dfga.fmean + dfga.fstd
-
-    return display(
-        draw(
-            data(dfga) *
-            coloralg *
-            mapping(;
-                col="params.task.DX" => nonnumeric,
-                row="params.task.K" => nonnumeric,
-            ) *
-            # (
-            #     mapping(
-            #         "iteration",
-            #         "fmean";
-            #     ) * visual(Lines)
-            # ) *
-            # (mapping("iteration", "fstd_lower", "fstd_upper") * visual(Band)),
-            (
-                mapping(
-                    "iteration",
-                    "fmean";
-                    lower="fstd_lower",
-                    upper="fstd_upper",
-                ) * visual(LinesFill)
-            );
-            facet=(; linkyaxes=:none),
-        ),
-    )
     # return serialize("$jidsstr-dfga.jls", dfga)
 end
