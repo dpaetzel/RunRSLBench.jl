@@ -280,7 +280,12 @@ function graphs(df=nothing)
     fig = Figure(; size=(1200, 600))
     ag3 = draw!(fig[1, 1:4], plt3; facet=(; linkxaxes=:none))
     legend!(fig[1, 5], ag3)
-    ag4 = draw!(fig[1, 6:9], plt4; facet=(; linkxaxes=:none))
+    ag4 = draw!(
+        fig[1, 6:9],
+        plt4;
+        facet=(; linkxaxes=:none),
+        axis=(; xscale=log10),
+    )
     CairoMakie.save("plots/All.pdf", fig)
     display(fig)
 
