@@ -204,8 +204,8 @@ function graphs(df=nothing)
         "XCSF (1–500)",
         "XCSF (1–1000)",
         "GA x:spt s:len",
-        "GA x:off s:len m+",
         "GA x:spt s:trn",
+        "GA x:off s:len m+",
         "GA x:cut s:len",
         "GA x:spt s:trn m+",
         "GA x:cut s:len m+",
@@ -216,97 +216,72 @@ function graphs(df=nothing)
     df[:, "params.algorithm.name"] .=
         get.(Ref(alg_pretty), df[:, "params.algorithm.name"], missing)
 
+    set_theme!()
+    update_theme!(theme_latexfonts())
+    update_theme!(;
+        size=(800, 800),
+        # palette=(; colors=:seaborn_colorblind),
+        palette=(; color=reverse(ColorSchemes.seaborn_colorblind.colors)),
+    )
+    set_kitty_config!(:scale, 0.8)
+
     coloralg =
         mapping(; color="params.algorithm.name" => alg_sorter => "Algorithm")
 
-    plt =
-        data(df) *
-        mapping(
-            "metrics.test.mae";
+    myecdf =
+        mapping(;
             col="params.task.DX" => nonnumeric,
             row="params.task.K" => nonnumeric,
         ) *
         coloralg *
         visual(ECDFPlot)
-    fig = draw(plt; facet=(; linkxaxes=:none))
-    CairoMakie.save("plots/TestMAEAll.pdf", fig)
-    display(fig)
 
-    plt =
-        data(df) *
-        mapping(
-            "metrics.train.mae";
-            col="params.task.DX" => nonnumeric,
-            row="params.task.K" => nonnumeric,
-        ) *
-        coloralg *
-        visual(ECDFPlot)
-    fig = draw(
-        plt;
-        # axis=(; xscale=log10),
-        facet=(; linkxaxes=:none),
+    onlygadt = data(
+        subset(
+            df,
+            "params.algorithm.family" =>
+                (f -> f .∈ Ref(["GARegressor", "DT"])),
+        ),
     )
-    CairoMakie.save("plots/TrainMAEAll.pdf")
-    display(fig)
 
-    plt =
-        data(df) *
-        mapping(
-            "metrics.n_rules";
-            col="params.task.DX" => nonnumeric,
-            row="params.task.K" => nonnumeric,
-        ) *
-        coloralg *
-        visual(ECDFPlot)
-    fig = draw(
-        plt;
-        # axis=(; xscale=log10),
-        facet=(; linkxaxes=:none),
+    onlyga = data(
+        subset(df, "params.algorithm.family" => (f -> f .== "GARegressor")),
     )
-    display(fig)
 
-    plt =
-        data(
-            subset(
-                df,
-                "params.algorithm.family" =>
-                    (f -> f .∈ Ref(["GARegressor", "DT"])),
+    gadtxcsf = data(
+        subset(
+            df,
+            "params.algorithm.name" => (
+                n ->
+                    n .∈ Ref([
+                        "DT (1–70)",
+                        "GA x:off s:len m+",
+                        "XCSF (1–500)",
+                    ])
             ),
-        ) *
-        mapping(
-            "metrics.test.mae";
-            col="params.task.DX" => nonnumeric,
-            row="params.task.K" => nonnumeric,
-        ) *
-        coloralg *
-        visual(ECDFPlot)
-    fig = draw(
-        plt;
-        # axis=(; xscale=log10),
-        facet=(; linkxaxes=:none),
+        ),
     )
+
+    nrules = mapping("metrics.n_rules" => "Number of Rules")
+    testmae = mapping("metrics.test.mae" => "Test MAE")
+
+    plt1 = onlyga * testmae * myecdf
+    plt2 = onlyga * nrules * myecdf
+    # fig = Figure(; size=(1600, 800))
+    fig = Figure(; size=(1200, 600))
+    ag1 = draw!(fig[1, 1:4], plt1; facet=(; linkxaxes=:none))
+    legend!(fig[1, 5], ag1)
+    ag2 = draw!(fig[1, 6:9], plt2; facet=(; linkxaxes=:none))
+    CairoMakie.save("plots/GA.pdf", fig)
     display(fig)
 
-    plt =
-        data(
-            subset(
-                df,
-                "params.algorithm.family" =>
-                    (f -> f .∈ Ref(["GARegressor", "DT"])),
-            ),
-        ) *
-        mapping(
-            "metrics.n_rules";
-            col="params.task.DX" => nonnumeric,
-            row="params.task.K" => nonnumeric,
-        ) *
-        coloralg *
-        visual(ECDFPlot)
-    fig = draw(
-        plt;
-        # axis=(; xscale=log10),
-        facet=(; linkxaxes=:none),
-    )
+    plt3 = gadtxcsf * testmae * myecdf
+    plt4 = gadtxcsf * nrules * myecdf
+    fig = Figure(; size=(1200, 600))
+    ag3 = draw!(fig[1, 1:4], plt3; facet=(; linkxaxes=:none))
+    legend!(fig[1, 5], ag3)
+    ag4 = draw!(fig[1, 6:9], plt4; facet=(; linkxaxes=:none))
+    CairoMakie.save("plots/All.pdf", fig)
     display(fig)
 
     return df
