@@ -62,8 +62,8 @@ ranges for hyperparameter optimization.
 
 `additional` is a list of configuration “deltas” that are to be evaluated as
 well (i.e. their hyperparameters are not optimized but the same hyperparameters
-as the ones of the “main” configuration are used safe for some being overwritten
-(see `Override`)).
+as the ones of the “main” configuration are used safe for some being
+overwritten, see `Override`).
 """
 @kwdef struct Variant
     # Label to use for this variant.
@@ -217,28 +217,7 @@ function listvariants(N; testonly=false)
             p_mutate=0.4,
             testonly=testonly,
         ),
-        mkvariant(
-            GARegressor,
-            "lnselect-nox-highm-randinit",
-            32;
-            select=:lengthniching,
-            crossover=:off,
-            p_mutate=0.4,
-            init=:random,
-            testonly=testonly,
-        ),
-        mkvariant(
-            GARegressor,
-            "lnselect-spatialx-highm-randinit",
-            32;
-            select=:lengthniching,
-            crossover=:spatial,
-            p_mutate=0.4,
-            init=:random,
-            testonly=testonly,
-        ),
         mkvariant(DT, N, 1, 70; testonly=testonly),
-        mkvariant(XCSFRegressor, N, 500; testonly=testonly),
         mkvariant(XCSFRegressor, N, 1000; testonly=testonly),
     ]
 end
