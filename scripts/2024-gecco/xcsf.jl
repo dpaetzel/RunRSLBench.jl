@@ -87,12 +87,12 @@ function fixparams!(::Type{XCSFRegressor}, params)
     return params
 end
 
-function userextras(::XCSFRegressor)
-    function _userextras(model, fitted_params_per_fold)
+function history_additions(::XCSFRegressor)
+    function _history_additions(model, fitted_params_per_fold)
         # TODO Probably unnecessary
     end
 
-    return _userextras
+    return _history_additions
 end
 
 function mkvariant(::Type{XCSFRegressor}, n, pop_size; testonly=false)

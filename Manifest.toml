@@ -1407,8 +1407,8 @@ version = "0.16.14"
 
 [[deps.MLJTuning]]
 deps = ["ComputationalResources", "Distributed", "Distributions", "LatinHypercubeSampling", "MLJBase", "ProgressMeter", "Random", "RecipesBase", "StatisticalMeasuresBase"]
-git-tree-sha1 = "eaa333749c385ca3edbbe06efcd59561bfdb87d5"
-repo-rev = "add-userextras"
+git-tree-sha1 = "13117052bd9b051f5304a07c19661f79265ebbdb"
+repo-rev = "add-history-additions"
 repo-url = "https://github.com/dpaetzel/MLJTuning.jl"
 uuid = "03970b2e-30c4-11ea-3135-d1576263f10f"
 version = "0.8.0"

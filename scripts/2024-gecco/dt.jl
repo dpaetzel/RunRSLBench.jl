@@ -49,12 +49,12 @@ function fixparams!(::Type{DT}, params)
     return params[:feature_importance] = Symbol(params[:feature_importance])
 end
 
-function userextras(::DT)
-    function _userextras(model, fitted_params_per_fold)
+function history_additions(::DT)
+    function _history_additions(model, fitted_params_per_fold)
         # TODO Probably unnecessary
     end
 
-    return _userextras
+    return _history_additions
 end
 
 function mkvariant(::Type{DT}, n, nrules_min, nrules_max; testonly=false)

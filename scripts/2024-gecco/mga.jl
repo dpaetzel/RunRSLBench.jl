@@ -94,15 +94,15 @@ function fixparams!(::Type{GARegressor}, params)
     return params
 end
 
-function userextras(::GARegressor)
-    function _userextras(model, fitted_params_per_fold)
+function history_additions(::GARegressor)
+    function _history_additions(model, fitted_params_per_fold)
         return MLJ.recursive_getproperty.(
             fitted_params_per_fold,
             Ref(:(fitresult.best.fitness)),
         )
     end
 
-    return _userextras
+    return _history_additions
 end
 
 function mkvariant(
@@ -130,6 +130,7 @@ function mkvariant(
             testonly=testonly,
         ),
         mkspace=nothing,
+        # mkspace=mkspace_mga,
         additional=[],
     )
 end

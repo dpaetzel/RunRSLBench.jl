@@ -222,18 +222,23 @@ function listvariants(N; testonly=false)
     ]
 end
 
-struct UserextraSelection <: MLJTuning.SelectionHeuristic end
+struct HistoryAdditionsSelection <: MLJTuning.SelectionHeuristic end
 
-function MLJTuning.best(::UserextraSelection, history)
+function MLJTuning.best(::HistoryAdditionsSelection, history)
     # We score using mean of CV here. I'm not that confident that this is the
     # best choice (e.g. median would be another option).
-    scores = mean.(getproperty.(history, :userextras))
+    scores = mean.(getproperty.(history, :history_additions))
     index_best = argmax(scores)
     return history[index_best]
 end
 
 # Let's pirate some types. Julia, please forgive me.
-MLJTuning.supports_heuristic(::LatinHypercube, ::UserextraSelection) = true
+function MLJTuning.supports_heuristic(
+    ::LatinHypercube,
+    ::HistoryAdditionsSelection,
+)
+    return true
+end
 
 function tune(mlf, mlfrun, type_model, params, mkspace, X, y; testonly=false)
     N, DX = nrow(X), ncol(X)
@@ -246,8 +251,11 @@ function tune(mlf, mlfrun, type_model, params, mkspace, X, y; testonly=false)
     n_gens_lhc = 30
     n_models = ifelse(testonly, 2, 100)
 
-    selection_heuristic =
-        ifelse(model isa GARegressor, UserextraSelection(), NaiveSelection())
+    selection_heuristic = ifelse(
+        model isa GARegressor,
+        HistoryAdditionsSelection(),
+        NaiveSelection(),
+    )
 
     logparam(
         mlf,
@@ -276,9 +284,9 @@ function tune(mlf, mlfrun, type_model, params, mkspace, X, y; testonly=false)
             # with an obscure error message.
             # TODO Increase number of models/make more fair wrt runtime
             n=n_models,
-            userextras=ifelse(
+            history_additions=ifelse(
                 model isa GARegressor,
-                userextras(model),
+                history_additions(model),
                 (_, _) -> nothing,
             ),
         ),
@@ -406,9 +414,9 @@ function _optparams(
         measures_per_fold = getproperty.(history, :per_fold)
 
         # Since `TunedModel` only supports measures that only depend on `y`
-        # and `ypred`, we log GARegressor's fitness using the userextras
-        # mechanism.
-        userextras_per_fold = getproperty.(history, :userextras)
+        # and `ypred`, we log GARegressor's fitness using the
+        # `history_additions` mechanism.
+        history_additions_per_fold = getproperty.(history, :history_additions)
 
         for i in eachindex(measures_per_fold)
             if i != nothing
@@ -424,13 +432,13 @@ function _optparams(
             end
         end
 
-        for i in eachindex(userextras_per_fold)
-            if userextras_per_fold[i] != nothing
+        for i in eachindex(history_additions_per_fold)
+            if history_additions_per_fold[i] != nothing
                 logmetric(
                     mlf,
                     mlfrun,
-                    "tuning.userextras",
-                    userextras_per_fold[i];
+                    "tuning.history_additions",
+                    history_additions_per_fold[i];
                     step=i,
                 )
             end
@@ -439,11 +447,11 @@ function _optparams(
         best_model = fitted_params(mach_tuned).model.best_model
 
         # Cheap sanity check for whether we extracted the correct model
-        # using the `userextras` interface.
+        # using the `history_additions` interface.
         if variant.params isa GARegressor
-            # Determine best_model for `GARegressor` based on `userextras`
-            # (where we log the fitness to).
-            index_best = argmax(mean.(userextras_per_fold))
+            # Determine best_model for `GARegressor` based on
+            # `history_additions` (where we log the fitness to).
+            index_best = argmax(mean.(history_additions_per_fold))
             @assert history[index_best].model == best_model
         end
 
