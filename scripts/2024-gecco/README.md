@@ -81,39 +81,30 @@ You'll probably need around 7–10 GB of RAM for some of the learning tasks.
    
    to run the configured ML algorithms using the best set of hyperparameters
    found by `optparams`.
+   
+   
+## Slurm scripts
+
+
+We provide Slurm scripts to automate performing repeated runs on all the data sets.
 
 
 ## Evaluation
 
 
+You can choose a tag which is appended to the files (so already existing files
+are not overwritten). Let's assume you choose `mytag`.
+
 ```
-julia --project=. scripts/2024-gecco/analyse.jl prep
+julia --project=. scripts/2024-gecco/analyse.jl prep mytag
 ```
 
 writes a `.jls` file (containing the run data exported from mlflow) to the
-current directory (you can also skip this step and use our run result data which
-can be found at [TODO]). That file is then put into
+current directory. You can also skip this step and use our run result data which
+can be found at [TODO]. That `.jls` file is then put into
 
 ```
-julia --project=. scripts/2024-gecco/analyse.jl graphs "2024 GECCO Data.jl"
+julia --project=. scripts/2024-gecco/analyse.jl graphs "2024 GECCO Data mytag.jls" mytag
 ```
 
 which writes the plots to the `plots/` directory.
-
-
-You can further generate/pull the convergence data from the mlflow server using
-
-```
-julia --project=. scripts/2024-gecco/analyse.jl prepconv "2024 GECCO Data.jl"
-```
-
-which writes another `.jls` file to the current directory (or you can again skip
-this and use our run result data from [TODO]).
-
-Afterwards,
-
-```
-julia --project=. scripts/2024-gecco/analyse.jl prepconv "2024 GECCO Data.jl" "2024 GECCO Data Fitnesses.jl"
-```
-
-performs and prints the results of our (rather preliminary) convergence analysis.

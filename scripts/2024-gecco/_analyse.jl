@@ -125,8 +125,6 @@ function duration(df)
 end
 
 alg_pretty = Dict(
-    "DT1-70" => "DT (1–70)",
-    "XCSF1000" => "XCSF (1–1000)",
     "MGA32-lnselect-spatialx" => "GA x:spt s:len",
     "MGA32-lnselect-nox" => "GA x:off s:len m+",
     "MGA32-trnmtselect-spatialx" => "GA x:spt s:trn",
@@ -137,8 +135,6 @@ alg_pretty = Dict(
 )
 
 alg_sorter = sorter([
-    "DT (1–70)",
-    "XCSF (1–1000)",
     "GA x:spt s:len",
     "GA x:spt s:trn",
     "GA x:off s:len m+",
@@ -154,26 +150,15 @@ coloralg =
 function _loadruns()
     # Get MGA runs from:
     #
-    # 2024-01-31 19:29 run set (seeds 0-4, all MGA only, this time MGA's n_iter=2000)
-    _df3 = _loadruns(539284:539727, 7 * 60 * 5)
-    # Get DT and XCSF runs from:
-    #
-    # 2024-01-30 22:18 run set (seeds 0-4, aka 1756-.*, MGA's n_iter=1000)
-    _df4 = _loadruns(535054:535501, 7 * 60 * 5)
-    _df5 = subset(
-        _df4,
-        "params.algorithm.family" =>
-            (f -> f .∈ Ref(["DT", "XCSFRegressor"])),
-    )
-    @assert nrow(_df5) == 3 * 60 * 5
-
-    return vcat(deepcopy(_df3), deepcopy(_df5))
+    # 2024-01-31 19:29 run set (seeds 0-4, all MGA only, n_iter=2000)
+    return _loadruns(539284:539727, 7 * 60 * 5)
 end
 
 """
-Reads the data from mlflow, prepares it for plotting and serializes it.
+Reads the data from mlflow and the task stats files, prepares it for plotting
+and serializes it.
 """
-function _prep(df)
+function _prep(df, tag=nothing)
     # Only keep algorithm variants that were part of the study.
     df = subset(
         df,
@@ -220,8 +205,8 @@ function _prep(df)
 
     @info "Checking number of data points …"
 
-    # 7 MGAs, 1 DT, 1 XCSF.
-    n_variants = 7 + 1 + 1
+    # 7 MGAs
+    n_variants = 7
     # 3 dimensionalities, 3 numbers of components, 6 learning tasks each.
     n_tasks = 3 * 3 * 6
     n_reps = 5
@@ -234,7 +219,7 @@ function _prep(df)
     df[:, "params.algorithm.name"] .=
         get.(Ref(alg_pretty), df[:, "params.algorithm.name"], missing)
 
-    fname = "2024 GECCO Data"
+    fname = isnothing(tag) ? "2024 GECCO Data" : "2024 GECCO Data $tag"
     @info "Serializing data to $fname{.jls,.csv} …"
     serialize("$fname.jls", df)
     CSV.write(
@@ -247,7 +232,7 @@ function _prep(df)
     return nothing
 end
 
-function _graphs(df)
+function _graphs(df, tag=nothing)
     df = deepcopy(df)
 
     if !isdir("plots")
@@ -274,142 +259,28 @@ function _graphs(df)
         subset(df, "params.algorithm.family" => (f -> f .== "GARegressor")),
     )
 
-    gadtxcsf = data(
-        subset(
-            df,
-            "params.algorithm.name" => (
-                n ->
-                    n .∈ Ref([
-                        "DT (1–70)",
-                        "GA x:off s:len m+",
-                        "XCSF (1–1000)",
-                    ])
-            ),
-        ),
-    )
-
     nrules = mapping("metrics.n_rules" => "Number of Rules")
     testmae = mapping("metrics.test.mae" => "Test MAE")
 
     plt1 = onlyga * testmae * myecdf
     plt2 = onlyga * nrules * myecdf
     fig = Figure(; size=(1200, 600))
-    ag1 = draw!(fig[1, 1:4], plt1; facet=(; linkxaxes=:none))
-    legend!(fig[1, 5], ag1)
-    ag2 = draw!(fig[1, 6:9], plt2; facet=(; linkxaxes=:none))
-    CairoMakie.save("plots/GA.pdf", fig)
-    display(fig)
-
-    plt3 = gadtxcsf * testmae * myecdf
-    plt4 = gadtxcsf * nrules * myecdf
-    fig = Figure(; size=(1200, 600))
-    ag3 = draw!(fig[1, 1:4], plt3; facet=(; linkxaxes=:none))
-    legend!(fig[1, 5], ag3)
-    ag4 = draw!(
-        fig[1, 6:9],
-        plt4;
+    ag1 = draw!(
+        fig[1, 1:4],
+        plt1;
         facet=(; linkxaxes=:none),
-        axis=(; xscale=log10),
+        axis=(; ylabel="Density"),
     )
-    CairoMakie.save("plots/All.pdf", fig)
+    legend!(fig[1, 5], ag1)
+    ag2 = draw!(
+        fig[1, 6:9],
+        plt2;
+        facet=(; linkxaxes=:none),
+        axis=(; ylabel="Density"),
+    )
+    fname = isnothing(tag) ? "plots/GA.pdf" : "plots/GA $tag.pdf"
+    CairoMakie.save("plots/GA $tag.pdf", fig)
     display(fig)
 
     return df
-end
-
-function readfitness(artifact_uri)
-    _fitness = Matrix(readcsvartifact(artifact_uri, "log_fitness.csv"))
-
-    # Let's sort the fitness row-wise (lowest fitness at the start of each row)
-    # and create a nice `DataFrame`.
-    fitness = deepcopy(_fitness)
-    fitness = reduce(vcat, transpose.(sort.(eachrow(fitness))))
-    fitness = DataFrame(fitness, :auto)
-    fitness[!, "Iteration"] = 1:nrow(fitness)
-    return fitness =
-        stack(fitness; variable_name="Ranked Solution", value_name="Fitness")
-end
-
-function readfitnesselitist(artifact_uri)
-    fitness = readfitness(artifact_uri)
-    return subset(fitness, "Ranked Solution" => (s -> s .== "x32"))
-end
-
-function fitnessmeanvar(arrays)
-    # Each of the 1000 rows is 30 entries: 6 tasks and 5 reps each.
-    uuu = reduce(hcat, arrays)
-    m = vec(mean(uuu; dims=2))
-    return (;
-        iteration=collect(1:length(m)),
-        fmean=m,
-        fstd=vec(std(uuu; dims=2)),
-    )
-end
-
-function ratedeltas(array, ds=[1400, 1200, 1000, 800, 600, 400, 200])
-    return NamedTuple(
-        Symbol.("ratedelta" .* string.(ds)) .=>
-            array[2000 .- ds] ./ array[end],
-    )
-end
-
-function elemwisemean(x...; ds=[1400, 1200, 1000, 800, 600, 400, 200])
-    return NamedTuple(
-        Symbol.("ratedelta" .* string.(ds)) .=> round.(mean.(x); digits=4),
-    )
-end
-
-function elemwisestd(x...; ds=[1400, 1200, 1000, 800, 600, 400, 200])
-    return NamedTuple(
-        Symbol.("ratedelta" .* string.(ds)) .=> round.(std.(x); digits=4),
-    )
-end
-
-function _prepconv(df)
-    df_ga = subset(df, "params.algorithm.family" => (f -> f .== "GARegressor"))
-    fitnesses = @showprogress map(readfitnesselitist, df_ga.artifact_uri)
-    fname = "2024 GECCO Data Fitnesses.jls"
-    @info "Serializing fitnesses to $fname …"
-    serialize(fname, fitnesses)
-    return nothing
-end
-
-function _conv(df, fitnesses)
-    df_ga = subset(df, "params.algorithm.family" => (f -> f .== "GARegressor"))
-    df_ga[!, "felitist"] = getproperty.(fitnesses, :Fitness)
-    _df_ga = deepcopy(df_ga)
-    df_ga = deepcopy(_df_ga)
-    serialize("2024-02-02-10-22-df_ga.jls", df_ga)
-
-    df_ga = transform(df_ga, "felitist" => ByRow(ratedeltas) => AsTable)
-
-    tablemean = sort(
-        combine(
-            groupby(
-                df_ga,
-                ["params.algorithm.name"],
-                # ["params.task.DX", "params.task.K", "params.algorithm.name"],
-            ),
-            r"^ratedelta\d+$" => elemwisemean => AsTable,
-        ),
-    )
-
-    tablestd = sort(
-        combine(
-            groupby(
-                df_ga,
-                ["params.algorithm.name"],
-                # ["params.task.DX", "params.task.K", "params.algorithm.name"],
-            ),
-            r"^ratedelta\d+$" => elemwisestd => AsTable,
-        ),
-    )
-
-    println("stds:")
-    display(tablestd)
-    println("means:")
-    display(tablemean)
-    println(tolatex(tablemean))
-
-    return nothing
 end
