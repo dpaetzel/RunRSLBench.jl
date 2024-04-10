@@ -23,12 +23,6 @@ You'll need the learning tasks; we'll assume that they lie in a directory
 `../2024-gecco-tasks/2024-01-19T16-28-51.924-task-selection`.
 
 
-Since the `RSLModels.jl` package has not been published yet, you'll need a local
-copy of that package. We'll assume it's located at `../RSLModels.jl` (this is
-the path used in this `RunRSLBench.jl` project; use `]dev` etc. in a Julia
-project REPL to change that path).
-
-
 Ensure that `http://localhost:5000` is a running Mlflow tracking server (e.g.
 keep `mlflow server --no-serve-artifacts` running).
 
@@ -36,40 +30,7 @@ keep `mlflow server --no-serve-artifacts` running).
 You'll probably need around 7–10 GB of RAM for some of the learning tasks.
 
 
-## Hyperparameter optimization
-
-
-1. From the root of this repository, run
-
-   ```
-   julia --project=. scripts/2024-gecco/run.jl optparams
-   ```
-   
-   to see the options of that script.
-2. Run e.g.
-
-   ```
-   julia --project=. scripts/2024-gecco/run.jl optparams 2-2-502-0-0.9-true.data.npz
-   ```
-   
-   to optimize the hyperparameters of the configured ML algorithms for the data
-   set in `2-2-502-0-0.9-true.data.npz`.
-   
-   Or, to optimize hyperparameters for all the task in a certain directory:
-   
-   ```
-   julia --project=. scripts/2024-gecco/run.jl optparams ~/2024-gecco-tasks/2024-01-19T16-28-51.924-task-selection/*.npz
-   ```
-   
-   Or, to do so parallely (make sure that 1. you have enough RAM, 2. Julia
-   precompilation was already done, 3. the mlflow experiment already exists):
-   
-   ```
-   find ../2024-gecco-tasks/2024-01-19T16-28-51.924-task-selection/*.npz -name '*.npz' -print0 | parallel -0 --results output --progress --eta julia --project=. scripts/2024-gecco/run.jl optparams '{}'
-   ```
-
-
-## Best-configuration runs
+# Performing runs
 
 
 1. Ensure that `localhost:5000` is a running Mlflow tracking server.
@@ -79,14 +40,16 @@ You'll probably need around 7–10 GB of RAM for some of the learning tasks.
    julia --project=. scripts/2024-gecco/run.jl runbest 2-2-502-0-0.9-true.data.npz
    ```
    
-   to run the configured ML algorithms using the best set of hyperparameters
-   found by `optparams`.
+   to run the configured ML algorithms on the
+   `../2024-gecco-tasks/2024-01-19T16-28-51.924-task-selection/2-2-502-0-0.9-true.data.npz`
+   data set.
    
    
 ## Slurm scripts
 
 
-We provide Slurm scripts to automate performing repeated runs on all the data sets.
+We provide a Slurm script to automate performing repeated runs on all the data
+sets (`submitrunbest`).
 
 
 ## Evaluation

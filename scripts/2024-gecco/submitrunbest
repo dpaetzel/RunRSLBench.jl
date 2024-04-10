@@ -1,0 +1,8 @@
+#!/usr/bin/env fish
+
+
+for variant in MGA32-lnselect-spatialx MGA32-lnselect-nox MGA32-trnmtselect-spatialx MGA32-lnselect-cutsplicex MGA32-lnselect-spatialx-highm MGA32-lnselect-cutsplicex-highm MGA32-trnmtselect-spatialx-highm
+    for fname in ../2024-gecco-tasks/2024-01-30T17-50-00.749-task-selection-light/*.npz
+        sbatch scripts/2024-gecco/run_runbest.sbatch $variant $fname
+    end
+end
