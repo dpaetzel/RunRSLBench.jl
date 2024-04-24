@@ -64,7 +64,8 @@ julia --project=. scripts/2024-gecco/analyse.jl prep mytag
 
 writes a `.jls` file (containing the run data exported from mlflow) to the
 current directory. You can also skip this step and use our run result data which
-can be found at [TODO]. That `.jls` file is then put into
+can be found [on Zenodo](https://zenodo.org/records/10963842). That `.jls` file
+is then put into
 
 ```
 julia --project=. scripts/2024-gecco/analyse.jl graphs "2024 GECCO Data mytag.jls" mytag
