@@ -99,7 +99,8 @@ julia --project=. scripts/2024-iwerl/analyse.jl prep foo
 
 writes a `.jls` file (containing the run data exported from mlflow) to the
 current directory (you can also skip this step and use our run result data which
-can be found at [TODO]). That file is then put into
+can be found on [Zenodo](https://doi.org/10.5281/zenodo.11143818)). That file is
+then put into
 
 ```
 julia --project=. scripts/2024-iwerl/analyse.jl graphs "2024 IWERL Data foo.jls" foo
@@ -115,7 +116,8 @@ julia --project=. scripts/2024-iwerl/analyse.jl prepconv "2024 IWERL Data foo.jl
 ```
 
 which writes another `.jls` file to the current directory (or you can again skip
-this and use our run result data from [TODO]).
+this and use our run result data from
+[Zenodo](https://doi.org/10.5281/zenodo.11143818)).
 
 Afterwards,
 
